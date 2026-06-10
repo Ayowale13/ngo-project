@@ -358,4 +358,4 @@ def _send_welcome_email(to_email, to_name):
 init_db()
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
