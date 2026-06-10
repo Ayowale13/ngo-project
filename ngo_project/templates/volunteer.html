@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Volunteer – HealthBridge NGO{% endblock %}
+
+{% block content %}
+
+<section class="page-hero">
+  <div class="container position-relative" style="z-index:2;padding-bottom:2rem;">
+    <span class="hero-eyebrow d-inline-block mb-3"><i class="bi bi-hand-thumbs-up-fill me-1"></i> Join Us</span>
+    <h1>Become a Volunteer</h1>
+    <p class="mt-2">Your skills and time can be the bridge between illness and wellness for thousands.</p>
+  </div>
+</section>
+
+<!-- Why Volunteer -->
+<section class="section-blue">
+  <div class="container">
+    <div class="text-center mb-5">
+      <span class="section-eyebrow">Why Join Us</span>
+      <h2 class="section-title">The Volunteer Experience</h2>
+    </div>
+    <div class="row g-4 justify-content-center">
+      {% set perks = [
+        ("bi-award","Certified Training","Receive recognised health volunteer training and certification upon completion."),
+        ("bi-people","Community","Join a 350+ strong family of passionate health advocates."),
+        ("bi-lightbulb","Real Impact","Your work directly reaches patients who have never seen a doctor."),
+        ("bi-briefcase","Career Growth","Build meaningful experience in public health, medicine, and social work.")
+      ] %}
+      {% for icon, title, desc in perks %}
+      <div class="col-sm-6 col-lg-3">
+        <div class="snw-card text-center">
+          <div class="card-icon mx-auto"><i class="bi {{ icon }}"></i></div>
+          <h4>{{ title }}</h4>
+          <p>{{ desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Registration Form -->
+<section class="snw-form-section">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <div class="snw-form-card">
+          <div class="text-center mb-4">
+            <div style="width:60px;height:60px;background:linear-gradient(135deg,var(--sapphire),var(--ocean-400));border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.5rem;color:white;">
+              <i class="bi bi-person-plus-fill"></i>
+            </div>
+            <h3 style="color:var(--sapphire);">Volunteer Registration</h3>
+            <p style="color:var(--text-muted);font-size:.93rem;">Complete the form below and our volunteer coordinator will reach out within 48 hours.</p>
+          </div>
+          <form action="{{ url_for('volunteer') }}" method="POST">
+            <div class="row g-3">
+              <div class="col-sm-6">
+                <label class="form-label">Full Name *</label>
+                <input type="text" name="full_name" class="form-control" placeholder="Your full name" required/>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label">Email Address *</label>
+                <input type="email" name="email" class="form-control" placeholder="you@example.com" required/>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label">Phone Number *</label>
+                <input type="tel" name="phone" class="form-control" placeholder="+234 ..." required/>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label">Relevant Skills / Background</label>
+                <select name="skills" class="form-select">
+                  <option value="">Select your background</option>
+                  <option>Medical Professional (Doctor/Nurse)</option>
+                  <option>Pharmacy / Lab Sciences</option>
+                  <option>Public Health / Epidemiology</option>
+                  <option>Social Work / Counseling</option>
+                  <option>Nutrition / Dietetics</option>
+                  <option>Communications / Media</option>
+                  <option>Logistics / Operations</option>
+                  <option>IT / Data / Technology</option>
+                  <option>Finance / Accounting</option>
+                  <option>Student (Health-related)</option>
+                  <option>General Volunteer (No specific field)</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Tell Us About Yourself</label>
+                <textarea name="message" class="form-control" rows="4" placeholder="Why do you want to volunteer? Any relevant experience or availability?"></textarea>
+              </div>
+              <div class="col-12">
+                <button type="submit" class="btn-snw w-100" style="justify-content:center;font-size:1rem;padding:.85rem;">
+                  <i class="bi bi-check2-circle"></i> Submit Volunteer Application
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Newsletter sub -->
+<section class="newsletter-section">
+  <div class="container">
+    <div class="row justify-content-center text-center">
+      <div class="col-lg-6">
+        <h2 class="mb-2">Also Subscribe to Our Newsletter</h2>
+        <p class="mb-4">Stay informed on program news, volunteer events, and impact stories.</p>
+        <form action="{{ url_for('subscribe') }}" method="POST" class="newsletter-form">
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <input type="text" name="full_name" class="form-control" placeholder="Full Name" required/>
+            </div>
+            <div class="col-sm-6">
+              <input type="email" name="email" class="form-control" placeholder="Email Address" required/>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn-snw w-100" style="justify-content:center;">
+                <i class="bi bi-envelope-check"></i> Subscribe
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

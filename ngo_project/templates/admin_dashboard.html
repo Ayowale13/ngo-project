@@ -1,0 +1,144 @@
+{% extends "admin_base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+  <div>
+    <h1 style="color:rgba(255,255,255,.9);font-family:'Merriweather',serif;font-size:1.6rem;margin:0;">Dashboard</h1>
+    <p style="color:rgba(255,255,255,.4);font-size:.88rem;margin:0;">Welcome back, {{ current_user.username }}</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('export_subscribers') }}" class="btn-adm-export"><i class="bi bi-download"></i> Export Subscribers</a>
+    <a href="{{ url_for('export_volunteers') }}" class="btn-adm-export"><i class="bi bi-download"></i> Export Volunteers</a>
+  </div>
+</div>
+
+<!-- Stat Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-xl-3">
+    <div class="stat-card">
+      <div class="stat-icon blue"><i class="bi bi-envelope-fill"></i></div>
+      <div>
+        <div class="stat-num">{{ stats.total_subscribers }}</div>
+        <div class="stat-label">Total Subscribers</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="stat-card">
+      <div class="stat-icon teal"><i class="bi bi-people-fill"></i></div>
+      <div>
+        <div class="stat-num">{{ stats.total_volunteers }}</div>
+        <div class="stat-label">Total Volunteers</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="stat-card">
+      <div class="stat-icon indigo"><i class="bi bi-calendar-plus"></i></div>
+      <div>
+        <div class="stat-num">{{ stats.new_this_month }}</div>
+        <div class="stat-label">New Subscribers (Month)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="stat-card">
+      <div class="stat-icon green"><i class="bi bi-person-check-fill"></i></div>
+      <div>
+        <div class="stat-num">{{ stats.volunteers_this_month }}</div>
+        <div class="stat-label">New Volunteers (Month)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Subscribers Table -->
+<div class="admin-panel mb-4" id="subscribers">
+  <div class="panel-header">
+    <h5><i class="bi bi-envelope-fill me-2" style="color:#aed6f1"></i>Newsletter Subscribers <span class="panel-count ms-2">{{ subscribers|length }}</span></h5>
+    <a href="{{ url_for('export_subscribers') }}" class="btn-adm-export btn-adm-sm"><i class="bi bi-file-earmark-spreadsheet"></i> CSV</a>
+  </div>
+  {% if subscribers %}
+  <div class="table-responsive">
+    <table class="table admin-table align-middle">
+      <thead>
+        <tr>
+          <th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Subscribed</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in subscribers %}
+        <tr>
+          <td><span style="color:rgba(255,255,255,.35);">{{ loop.index }}</span></td>
+          <td><strong>{{ s.full_name }}</strong></td>
+          <td>{{ s.email }}</td>
+          <td>{{ s.phone or '—' }}</td>
+          <td><small>{{ s.date_subscribed.strftime('%d %b %Y') }}</small></td>
+          <td>
+            <form action="{{ url_for('delete_subscriber', sub_id=s.id) }}" method="POST" onsubmit="return confirm('Delete this subscriber?')">
+              <button type="submit" class="btn-adm-danger"><i class="bi bi-trash3"></i> Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-4 text-center" style="color:rgba(255,255,255,.35);">
+    <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:.5rem;"></i>
+    No subscribers yet. Share the newsletter form on the public site.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Volunteers Table -->
+<div class="admin-panel" id="volunteers">
+  <div class="panel-header">
+    <h5><i class="bi bi-people-fill me-2" style="color:#aed6f1"></i>Volunteer Applications <span class="panel-count ms-2">{{ volunteers|length }}</span></h5>
+    <a href="{{ url_for('export_volunteers') }}" class="btn-adm-export btn-adm-sm"><i class="bi bi-file-earmark-spreadsheet"></i> CSV</a>
+  </div>
+  {% if volunteers %}
+  <div class="table-responsive">
+    <table class="table admin-table align-middle">
+      <thead>
+        <tr>
+          <th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Skills</th><th>Message</th><th>Submitted</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in volunteers %}
+        <tr>
+          <td><span style="color:rgba(255,255,255,.35);">{{ loop.index }}</span></td>
+          <td><strong>{{ v.full_name }}</strong></td>
+          <td>{{ v.email }}</td>
+          <td>{{ v.phone }}</td>
+          <td><small>{{ v.skills or '—' }}</small></td>
+          <td>
+            {% if v.message %}
+            <small style="opacity:.7;" title="{{ v.message }}">{{ v.message[:40] }}{% if v.message|length > 40 %}…{% endif %}</small>
+            {% else %}—{% endif %}
+          </td>
+          <td><small>{{ v.date_submitted.strftime('%d %b %Y') }}</small></td>
+          <td>
+            <form action="{{ url_for('delete_volunteer', vol_id=v.id) }}" method="POST" onsubmit="return confirm('Delete this volunteer?')">
+              <button type="submit" class="btn-adm-danger"><i class="bi bi-trash3"></i> Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-4 text-center" style="color:rgba(255,255,255,.35);">
+    <i class="bi bi-person-plus" style="font-size:2rem;display:block;margin-bottom:.5rem;"></i>
+    No volunteer applications yet.
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

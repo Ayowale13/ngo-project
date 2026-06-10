@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Our Programs – HealthBridge NGO{% endblock %}
+
+{% block content %}
+
+<section class="page-hero">
+  <div class="container position-relative" style="z-index:2;padding-bottom:2rem;">
+    <span class="hero-eyebrow d-inline-block mb-3"><i class="bi bi-clipboard2-pulse me-1"></i> What We Run</span>
+    <h1>Our Health Programs</h1>
+    <p class="mt-2">Evidence-based, community-driven programs making a measurable difference.</p>
+  </div>
+</section>
+
+<!-- Programs Grid -->
+<section class="section-light">
+  <div class="container">
+    <div class="row g-4">
+
+      {% set programs = [
+        ("🏥","Community Health Clinics","Weekly free clinics offering blood pressure screening, diabetes checks, eye tests, and general consultations. Available every Saturday in partnered communities.","12 locations","Weekly","4,200+ patients/yr"),
+        ("🤱","Maternal Wellness Program","Comprehensive prenatal care, safe birth support, and postnatal guidance for mothers in low-income communities. Includes nutrition counseling and immunization support.","8 states","Ongoing","1,800 mothers/yr"),
+        ("🥗","Child Nutrition Initiative","Combating childhood malnutrition through community kitchens, micronutrient supplementation, and caregiver education programs targeting children under 5.","6 LGAs","Bi-weekly","3,000 children"),
+        ("🧠","Mental Health & Counseling","Breaking stigma and expanding access to mental health services through community counselors, peer support groups, and crisis helpline partnerships.","4 states","Continuous","600+ sessions/yr"),
+        ("📚","Health Education Workshops","Schools, markets, and religious centers become classrooms for hygiene, family planning, disease prevention, and first aid training.","Pan-Nigeria","Monthly","5,000+ reached"),
+        ("💊","Medication Access Program","Connecting patients to affordable essential medicines through our pharmaceutical partnerships and subsidy schemes for chronic disease management.","10 states","Ongoing","2,000+ beneficiaries"),
+        ("🩺","Mobile Outreach Units","Deploying equipped vans into rural and peri-urban areas for screening days, immunization drives, and emergency first response training.","National","Quarterly","3,500+ screenings/yr"),
+        ("🤝","Community Health Agents","Training local volunteers as Community Health Agents (CHAs) to become first-responders and trusted health information sources in their own neighborhoods.","Pan-Nigeria","Annual intake","200+ CHAs trained")
+      ] %}
+
+      {% for emoji, title, desc, reach, freq, impact in programs %}
+      <div class="col-md-6 col-lg-4">
+        <div class="program-card">
+          <div class="program-card-header">
+            <div class="prog-icon">{{ emoji }}</div>
+            <div>
+              <h5 class="mb-0" style="color:white;font-size:1rem;">{{ title }}</h5>
+              <small style="opacity:.75;font-size:.82rem;">{{ freq }}</small>
+            </div>
+          </div>
+          <div class="program-card-body">
+            <p>{{ desc }}</p>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <span class="badge" style="background:var(--sky-100);color:var(--sapphire);font-size:.78rem;padding:.35rem .7rem;border-radius:50px;font-weight:600;">
+                <i class="bi bi-geo-alt me-1"></i>{{ reach }}
+              </span>
+              <span class="badge" style="background:var(--sky-100);color:var(--sapphire);font-size:.78rem;padding:.35rem .7rem;border-radius:50px;font-weight:600;">
+                <i class="bi bi-bar-chart me-1"></i>{{ impact }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+
+    </div>
+  </div>
+</section>
+
+<!-- Partners -->
+<section class="section-blue">
+  <div class="container text-center">
+    <span class="section-eyebrow">Collaboration</span>
+    <h2 class="section-title">Program Partners</h2>
+    <p class="section-subtitle">We work alongside government agencies, international bodies, and local organisations to maximise our reach and impact.</p>
+    <div class="row g-3 justify-content-center mt-3">
+      {% for partner in ["FMOH Nigeria","UNICEF","WHO","State Primary Health Care Boards","Community Health Associations","Local Government Councils"] %}
+      <div class="col-auto">
+        <span class="badge" style="background:var(--white);color:var(--sapphire);border:1.5px solid var(--sky-200);padding:.55rem 1.1rem;border-radius:50px;font-size:.88rem;font-weight:600;">{{ partner }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="newsletter-section">
+  <div class="container text-center">
+    <h2 class="mb-3">Support a Program</h2>
+    <p class="mb-4" style="color:rgba(255,255,255,.75);max-width:500px;margin:0 auto 2rem;">Your skills, time, or partnership can directly fund and power any of our eight programs.</p>
+    <div class="d-flex gap-3 justify-content-center flex-wrap">
+      <a href="{{ url_for('volunteer') }}" class="btn-snw"><i class="bi bi-people-fill"></i> Volunteer</a>
+      <a href="{{ url_for('contact') }}" class="btn-snw-outline"><i class="bi bi-handshake"></i> Partner With Us</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

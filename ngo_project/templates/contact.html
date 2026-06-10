@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Contact Us – HealthBridge NGO{% endblock %}
+
+{% block content %}
+
+<section class="page-hero">
+  <div class="container position-relative" style="z-index:2;padding-bottom:2rem;">
+    <span class="hero-eyebrow d-inline-block mb-3"><i class="bi bi-envelope-heart me-1"></i> Reach Out</span>
+    <h1>Contact HealthBridge</h1>
+    <p class="mt-2">We'd love to hear from you — partners, volunteers, press, or community members.</p>
+  </div>
+</section>
+
+<section class="snw-form-section">
+  <div class="container">
+    <div class="row g-5 align-items-start">
+
+      <!-- Contact Info -->
+      <div class="col-lg-4">
+        <div class="snw-card mb-4">
+          <div class="card-icon"><i class="bi bi-geo-alt-fill"></i></div>
+          <h5 style="color:var(--sapphire);">Our Office</h5>
+          <p>12 Harmony Lane, Victoria Island<br>Lagos, Nigeria</p>
+        </div>
+        <div class="snw-card mb-4">
+          <div class="card-icon"><i class="bi bi-telephone-fill"></i></div>
+          <h5 style="color:var(--sapphire);">Phone</h5>
+          <p>+234 800 123 4567<br><small style="color:var(--text-muted);">Mon – Fri, 8am – 5pm WAT</small></p>
+        </div>
+        <div class="snw-card mb-4">
+          <div class="card-icon"><i class="bi bi-envelope-fill"></i></div>
+          <h5 style="color:var(--sapphire);">Email</h5>
+          <p>info@healthbridge.org<br>volunteer@healthbridge.org</p>
+        </div>
+      </div>
+
+      <!-- Contact Form -->
+      <div class="col-lg-8">
+        <div class="snw-form-card">
+          <h3 style="color:var(--sapphire);margin-bottom:.5rem;">Send Us a Message</h3>
+          <p style="color:var(--text-muted);margin-bottom:2rem;font-size:.93rem;">Fill out the form and our team will respond within 2 business days.</p>
+          <form action="{{ url_for('contact') }}" method="POST">
+            <div class="row g-3">
+              <div class="col-sm-6">
+                <label class="form-label">Full Name *</label>
+                <input type="text" name="full_name" class="form-control" placeholder="Your full name" required/>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label">Email Address *</label>
+                <input type="email" name="email" class="form-control" placeholder="you@example.com" required/>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label">Phone Number</label>
+                <input type="tel" name="phone" class="form-control" placeholder="+234 ..."/>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label">Subject</label>
+                <select name="subject" class="form-select">
+                  <option value="">Select a topic</option>
+                  <option>General Inquiry</option>
+                  <option>Volunteering</option>
+                  <option>Partnership / Sponsorship</option>
+                  <option>Media & Press</option>
+                  <option>Programs Information</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Message *</label>
+                <textarea name="message" class="form-control" rows="5" placeholder="Tell us how we can help..." required></textarea>
+              </div>
+              <div class="col-12">
+                <button type="submit" class="btn-snw"><i class="bi bi-send-fill"></i> Send Message</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,383 @@
+/* ═══════════════════════════════════════════════════
+   ADMIN DASHBOARD  –  Sapphire Nightfall Dark Theme
+   ═══════════════════════════════════════════════════ */
+
+:root {
+  --adm-bg:       #0a1f33;
+  --adm-sidebar:  #0d2b45;
+  --adm-card:     #112d47;
+  --adm-border:   rgba(255,255,255,.08);
+  --adm-text:     rgba(255,255,255,.87);
+  --adm-muted:    rgba(255,255,255,.45);
+  --adm-accent:   #2471a3;
+  --adm-accent2:  #1a5276;
+  --sky-100:      #d6eaf8;
+  --sky-200:      #aed6f1;
+}
+
+body.admin-body {
+  background: var(--adm-bg);
+  color: var(--adm-text);
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* ── Admin Navbar ─────────────────────────────────── */
+.admin-navbar {
+  background: linear-gradient(135deg, var(--adm-bg) 0%, var(--adm-sidebar) 100%);
+  border-bottom: 1px solid var(--adm-border);
+  padding: .8rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 1040;
+}
+
+.admin-navbar .navbar-brand {
+  color: var(--adm-text) !important;
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.admin-navbar .navbar-brand .badge-admin {
+  background: var(--adm-accent);
+  color: var(--sky-100);
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: .2rem .5rem;
+  border-radius: 4px;
+  margin-left: .5rem;
+  vertical-align: middle;
+}
+
+.admin-nav-link {
+  color: var(--adm-muted) !important;
+  font-size: .9rem;
+  padding: .45rem .9rem !important;
+  border-radius: 6px;
+  transition: background .2s, color .2s;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.admin-nav-link:hover, .admin-nav-link.active {
+  color: var(--adm-text) !important;
+  background: rgba(255,255,255,.07);
+}
+
+.admin-nav-link.logout-link:hover {
+  background: rgba(220,53,69,.15);
+  color: #f1948a !important;
+}
+
+/* ── Dashboard wrapper ───────────────────────────── */
+.admin-wrapper { padding: 2rem 0 4rem; }
+
+/* ── Stat cards ──────────────────────────────────── */
+.stat-card {
+  background: linear-gradient(135deg, var(--adm-card) 0%, var(--adm-sidebar) 100%);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  padding: 1.6rem;
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  transition: transform .2s, box-shadow .2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.3);
+}
+
+.stat-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.stat-icon.blue { background: rgba(36,113,163,.3); color: var(--sky-200); }
+.stat-icon.teal { background: rgba(0,128,128,.25); color: #81d4c8; }
+.stat-icon.indigo { background: rgba(60,60,180,.25); color: #9fa8da; }
+.stat-icon.green { background: rgba(46,160,67,.2); color: #90ee90; }
+
+.stat-card .stat-num {
+  font-family: 'Merriweather', serif;
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: var(--adm-text);
+  line-height: 1;
+}
+
+.stat-card .stat-label {
+  font-size: .82rem;
+  color: var(--adm-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-top: .2rem;
+}
+
+/* ── Admin table panel ───────────────────────────── */
+.admin-panel {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.admin-panel .panel-header {
+  background: linear-gradient(90deg, var(--adm-sidebar), var(--adm-card));
+  padding: 1.2rem 1.6rem;
+  border-bottom: 1px solid var(--adm-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .8rem;
+}
+
+.admin-panel .panel-header h5 {
+  color: var(--adm-text);
+  font-family: 'Merriweather', serif;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.admin-panel .panel-header .panel-count {
+  background: var(--adm-accent);
+  color: var(--white);
+  font-size: .75rem;
+  padding: .2rem .6rem;
+  border-radius: 50px;
+  font-weight: 600;
+}
+
+/* ── Admin data table ────────────────────────────── */
+.admin-table {
+  color: var(--adm-text);
+  margin: 0;
+  font-size: .88rem;
+}
+
+.admin-table thead th {
+  background: rgba(0,0,0,.25);
+  color: var(--adm-muted);
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border-color: var(--adm-border);
+  padding: .9rem 1rem;
+}
+
+.admin-table tbody tr {
+  border-color: var(--adm-border);
+  transition: background .15s;
+}
+.admin-table tbody tr:hover { background: rgba(255,255,255,.04); }
+.admin-table td { padding: .85rem 1rem; vertical-align: middle; border-color: var(--adm-border); }
+
+.badge-pill {
+  font-size: .75rem;
+  padding: .25rem .65rem;
+  border-radius: 50px;
+  font-weight: 600;
+}
+
+/* ── Admin forms ─────────────────────────────────── */
+.admin-form-section .form-label {
+  color: rgba(255,255,255,.75);
+  font-size: .9rem;
+  font-weight: 600;
+  margin-bottom: .35rem;
+}
+
+.admin-form-section .form-control,
+.admin-form-section .form-select {
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  color: var(--adm-text);
+  font-size: .93rem;
+  padding: .65rem 1rem;
+  transition: border-color .2s, background .2s;
+}
+
+.admin-form-section .form-control:focus,
+.admin-form-section .form-select:focus {
+  background: rgba(255,255,255,.1);
+  border-color: var(--adm-accent);
+  box-shadow: 0 0 0 3px rgba(36,113,163,.25);
+  color: var(--adm-text);
+  outline: none;
+}
+
+.admin-form-section .form-control::placeholder { color: var(--adm-muted); }
+
+.admin-form-section .form-select option {
+  background: var(--adm-card);
+  color: var(--adm-text);
+}
+
+.admin-settings-group {
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-settings-group .group-title {
+  color: var(--sky-200);
+  font-size: .82rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin-bottom: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+/* ── Buttons inside admin ────────────────────────── */
+.btn-adm {
+  background: var(--adm-accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: .6rem 1.4rem;
+  font-size: .9rem;
+  font-weight: 600;
+  transition: background .2s, transform .2s;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+}
+.btn-adm:hover {
+  background: var(--adm-accent2);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.btn-adm-sm {
+  padding: .35rem .85rem;
+  font-size: .82rem;
+  border-radius: 6px;
+}
+
+.btn-adm-danger {
+  background: rgba(220,53,69,.2);
+  color: #f1948a;
+  border: 1px solid rgba(220,53,69,.3);
+  border-radius: 6px;
+  padding: .35rem .85rem;
+  font-size: .82rem;
+  font-weight: 600;
+  transition: background .2s;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+}
+.btn-adm-danger:hover {
+  background: rgba(220,53,69,.4);
+  color: #fff;
+}
+
+.btn-adm-export {
+  background: rgba(46,160,67,.15);
+  color: #90ee90;
+  border: 1px solid rgba(46,160,67,.3);
+  border-radius: 6px;
+  padding: .4rem 1rem;
+  font-size: .85rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  text-decoration: none;
+  transition: background .2s;
+}
+.btn-adm-export:hover { background: rgba(46,160,67,.3); color: #90ee90; }
+
+/* ── Login page ──────────────────────────────────── */
+.admin-login-wrapper {
+  min-height: 100vh;
+  background: linear-gradient(160deg, var(--adm-bg) 0%, #0f2540 50%, var(--adm-sidebar) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-login-wrapper::before {
+  content: '';
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  background: rgba(36,113,163,.07);
+  border-radius: 50%;
+  top: -150px;
+  right: -150px;
+}
+
+.login-card {
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 18px;
+  padding: 3rem 2.8rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  position: relative;
+  z-index: 2;
+}
+
+.login-card .login-logo {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--adm-accent), #3a8fc7);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  color: var(--white);
+  margin: 0 auto 1.5rem;
+}
+
+.login-card h2 {
+  color: var(--adm-text);
+  font-family: 'Merriweather', serif;
+  font-size: 1.5rem;
+  text-align: center;
+  margin-bottom: .4rem;
+}
+
+.login-card .login-subtitle {
+  color: var(--adm-muted);
+  text-align: center;
+  font-size: .88rem;
+  margin-bottom: 2rem;
+}
+
+/* ── Scrollbar for dark tables ───────────────────── */
+.table-responsive::-webkit-scrollbar { height: 5px; }
+.table-responsive::-webkit-scrollbar-track { background: transparent; }
+.table-responsive::-webkit-scrollbar-thumb { background: var(--adm-border); border-radius: 3px; }
+
+/* ── Section tab anchor offset ───────────────────── */
+#subscribers, #volunteers { scroll-margin-top: 80px; }
+
+@media (max-width: 576px) {
+  .login-card { padding: 2rem 1.5rem; }
+  .stat-card { flex-direction: column; text-align: center; }
+}

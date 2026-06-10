@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}HealthBridge NGO – Health Outreach & Community Care{% endblock %}
+
+{% block content %}
+
+<!-- ══ HERO ════════════════════════════════════════ -->
+<section class="snw-hero">
+  <div class="hero-orb hero-orb-1"></div>
+  <div class="hero-orb hero-orb-2"></div>
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col-lg-7 hero-content">
+        <span class="hero-eyebrow"><i class="bi bi-shield-heart-fill"></i> Health · Hope · Humanity</span>
+        <h1>Bringing <span class="accent">Healthcare</span> to Every Community</h1>
+        <p>HealthBridge is a non-profit organization providing free health screenings, maternal care, nutrition programs, and mental health support to underserved communities across Nigeria.</p>
+        <div class="d-flex flex-wrap gap-3">
+          <a href="{{ url_for('volunteer') }}" class="btn-snw"><i class="bi bi-people-fill"></i> Join as Volunteer</a>
+          <a href="{{ url_for('programs') }}" class="btn-snw-outline"><i class="bi bi-arrow-right-circle"></i> Our Programs</a>
+        </div>
+        <div class="hero-stats">
+          <div class="hero-stat-item">
+            <div class="stat-num">12,000+</div>
+            <div class="stat-label">Lives Reached</div>
+          </div>
+          <div class="hero-stat-item">
+            <div class="stat-num">8</div>
+            <div class="stat-label">Active Programs</div>
+          </div>
+          <div class="hero-stat-item">
+            <div class="stat-num">350+</div>
+            <div class="stat-label">Volunteers</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ MISSION CARDS ═══════════════════════════════ -->
+<section class="section-light">
+  <div class="container">
+    <div class="text-center mb-5">
+      <span class="section-eyebrow">What We Do</span>
+      <h2 class="section-title">Our Core Mission Pillars</h2>
+      <p class="section-subtitle">Every initiative we run is driven by one purpose — a healthier, more dignified life for all.</p>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-3">
+        <div class="snw-card text-center">
+          <div class="card-icon mx-auto"><i class="bi bi-heart-pulse"></i></div>
+          <h4>Free Health Clinics</h4>
+          <p>Regular mobile clinics providing screenings, consultations, and basic treatment at no cost.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="snw-card text-center">
+          <div class="card-icon mx-auto"><i class="bi bi-droplet-half"></i></div>
+          <h4>Maternal Wellness</h4>
+          <p>Prenatal care, safe delivery support, and postnatal health education for mothers.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="snw-card text-center">
+          <div class="card-icon mx-auto"><i class="bi bi-egg-fried"></i></div>
+          <h4>Child Nutrition</h4>
+          <p>Fighting malnutrition with supplementation programs and community kitchen initiatives.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="snw-card text-center">
+          <div class="card-icon mx-auto"><i class="bi bi-brain"></i></div>
+          <h4>Mental Health</h4>
+          <p>Counseling services, support groups, and stigma-reduction campaigns.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ IMPACT SECTION ══════════════════════════════ -->
+<section class="section-blue">
+  <div class="container">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-6">
+        <span class="section-eyebrow">Our Impact</span>
+        <h2 class="section-title">Real Change. Real People.</h2>
+        <p style="color:var(--text-muted);margin-bottom:2rem;">Since our founding in 2016, HealthBridge has grown from a small volunteer group into a recognized force for community health across 12 states.</p>
+        <div class="impact-quote">"HealthBridge gave my mother her first health check-up in 20 years. They treated her with such dignity and care." — Community beneficiary, Ogun State</div>
+        <a href="{{ url_for('about') }}" class="btn-snw mt-4 d-inline-flex"><i class="bi bi-info-circle"></i> Our Story</a>
+      </div>
+      <div class="col-lg-6">
+        <div class="row g-3 text-center">
+          <div class="col-6">
+            <div class="snw-card">
+              <div class="impact-number">12K+</div>
+              <div class="impact-label mt-1">Patients Served</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="snw-card">
+              <div class="impact-number">350+</div>
+              <div class="impact-label mt-1">Volunteers</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="snw-card">
+              <div class="impact-number">8</div>
+              <div class="impact-label mt-1">Active Programs</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="snw-card">
+              <div class="impact-number">12</div>
+              <div class="impact-label mt-1">States Reached</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ NEWSLETTER SECTION ══════════════════════════ -->
+<section class="newsletter-section">
+  <div class="container">
+    <div class="row justify-content-center text-center">
+      <div class="col-lg-7">
+        <span class="section-eyebrow" style="color:var(--sky-100);">Stay Connected</span>
+        <h2 class="mb-3">Get Our Newsletter</h2>
+        <p class="mb-4">Receive updates on our health programs, volunteer opportunities, and community stories directly in your inbox.</p>
+        <form action="{{ url_for('subscribe') }}" method="POST" class="newsletter-form">
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <input type="text" name="full_name" class="form-control" placeholder="Your Full Name" required/>
+            </div>
+            <div class="col-sm-6">
+              <input type="email" name="email" class="form-control" placeholder="Email Address" required/>
+            </div>
+            <div class="col-sm-6">
+              <input type="tel" name="phone" class="form-control" placeholder="Phone (optional)"/>
+            </div>
+            <div class="col-sm-6">
+              <button type="submit" class="btn-snw w-100" style="justify-content:center;">
+                <i class="bi bi-envelope-check"></i> Subscribe Now
+              </button>
+            </div>
+          </div>
+        </form>
+        <p class="mt-3" style="font-size:.82rem;color:rgba(255,255,255,.45);">No spam. Unsubscribe anytime.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ VOLUNTEER CTA ═══════════════════════════════ -->
+<section class="section-light">
+  <div class="container text-center">
+    <span class="section-eyebrow">Get Involved</span>
+    <h2 class="section-title">Become a Volunteer Today</h2>
+    <p class="section-subtitle">Your time and skills can transform a life. Join our growing community of volunteers making healthcare accessible to all.</p>
+    <a href="{{ url_for('volunteer') }}" class="btn-snw btn-lg"><i class="bi bi-hand-thumbs-up-fill"></i> Sign Up to Volunteer</a>
+  </div>
+</section>
+
+{% endblock %}

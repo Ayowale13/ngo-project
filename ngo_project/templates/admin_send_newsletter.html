@@ -1,0 +1,68 @@
+{% extends "admin_base.html" %}
+{% block title %}Send Newsletter{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4">
+  <a href="{{ url_for('admin_dashboard') }}" class="btn-adm btn-adm-sm"><i class="bi bi-arrow-left"></i> Back</a>
+  <div>
+    <h1 style="color:rgba(255,255,255,.9);font-family:'Merriweather',serif;font-size:1.6rem;margin:0;">Send Newsletter</h1>
+    <p style="color:rgba(255,255,255,.4);font-size:.88rem;margin:0;">Compose and broadcast to all subscribers</p>
+  </div>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    {% if not settings or not settings.sender_email %}
+    <div class="mb-4 p-3 d-flex align-items-center gap-3" style="background:rgba(255,180,0,.1);border:1px solid rgba(255,180,0,.25);border-radius:10px;">
+      <i class="bi bi-exclamation-triangle-fill" style="color:#ffd700;font-size:1.2rem;"></i>
+      <div>
+        <div style="color:#ffd700;font-weight:600;font-size:.9rem;">Email not configured</div>
+        <div style="color:rgba(255,255,255,.5);font-size:.82rem;">
+          <a href="{{ url_for('admin_email_settings') }}" style="color:#aed6f1;">Configure email settings</a> before sending.
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="admin-settings-group mb-3" style="background:rgba(36,113,163,.1);">
+      <div style="color:rgba(255,255,255,.6);font-size:.9rem;">
+        <i class="bi bi-people-fill me-2" style="color:#aed6f1;"></i>
+        This newsletter will be sent to <strong style="color:#aed6f1;">{{ count }} subscriber{{ 's' if count != 1 }}</strong>.
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <div class="panel-header">
+        <h5><i class="bi bi-envelope-fill me-2" style="color:#aed6f1;"></i>Compose Newsletter</h5>
+      </div>
+      <div class="p-4">
+        <form method="POST" class="admin-form-section">
+          <div class="mb-3">
+            <label class="form-label">Email Subject *</label>
+            <input type="text" name="subject" class="form-control" placeholder="e.g. Our Latest Health Outreach Update" required/>
+          </div>
+          <div class="mb-4">
+            <label class="form-label">Message Body (HTML supported) *</label>
+            <textarea name="body" class="form-control" rows="10"
+                      placeholder="Write your newsletter content here. You can use basic HTML for formatting." required></textarea>
+            <div class="form-text" style="color:rgba(255,255,255,.3);font-size:.8rem;">
+              HTML tags like &lt;b&gt;, &lt;a&gt;, &lt;br&gt;, &lt;p&gt; are supported.
+            </div>
+          </div>
+          <div class="d-flex gap-3">
+            <button type="submit" class="btn-adm" {% if not settings or not settings.sender_email %}disabled{% endif %}
+                    style="padding:.75rem 2rem;"
+                    onclick="return confirm('Send this newsletter to {{ count }} subscriber(s)?')">
+              <i class="bi bi-send-fill"></i> Send to All Subscribers
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
