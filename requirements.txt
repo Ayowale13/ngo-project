@@ -3,4 +3,4 @@ flask-sqlalchemy
 flask-login
 gunicorn
 werkzeug
-cryptography
+python-dotenv
