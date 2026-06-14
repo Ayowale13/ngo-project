@@ -44,6 +44,11 @@
             <i class="bi bi-globe"></i> Public Site
           </a>
         </li>
+        <li class="nav-item">
+          <a class="admin-nav-link {% if request.endpoint=='admin_change_password' %}active{% endif %}" href="{{ url_for('admin_change_password') }}">
+            <i class="bi bi-shield-lock-fill"></i> Change Password
+          </a>
+        </li>
         <li class="nav-item ms-lg-2">
           <a class="admin-nav-link logout-link" href="{{ url_for('admin_logout') }}">
             <i class="bi bi-box-arrow-right"></i> Logout

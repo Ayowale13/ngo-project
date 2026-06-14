@@ -8,26 +8,26 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
-# Load .env file when present (local dev).  No-op if file missing.
+# Load .env when present (local dev). No-op if file is missing.
 from dotenv import load_dotenv
 load_dotenv()
 
 from flask import (Flask, render_template, redirect, url_for,
-                   flash, request, Response, session)
+                   flash, request, Response)
 from flask_login import (LoginManager, login_user, logout_user,
                          login_required, current_user)
 
 from config import Config
 from models import db, AdminUser, Subscriber, Volunteer, EmailSettings
 
-# One logger for all email activity – visible in Gunicorn logs on Render
+# ── Logging (visible in Gunicorn output on Render) ───────────────────────────
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s [%(levelname)s] %(message)s')
 
+# ── App + extensions ─────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.config.from_object(Config)
-
 db.init_app(app)
 
 login_manager = LoginManager()
@@ -42,7 +42,7 @@ def load_user(user_id):
     return AdminUser.query.get(int(user_id))
 
 
-# ── DB + seed ────────────────────────────────────────────────────────────────
+# ── Database initialisation ──────────────────────────────────────────────────
 
 def init_db():
     os.makedirs('instance', exist_ok=True)
@@ -54,19 +54,19 @@ def init_db():
             db.session.add(admin)
             db.session.commit()
             print('Default admin created  →  username: admin  |  password: admin123')
-
         if not EmailSettings.query.first():
-            settings = EmailSettings(
+            db.session.add(EmailSettings(
                 sender_name='NGO Outreach Team',
                 smtp_host='smtp.gmail.com',
                 smtp_port=587,
-                mail_service='smtp'
-            )
-            db.session.add(settings)
+                mail_service='smtp',
+            ))
             db.session.commit()
 
 
-# ── Public routes ────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+#  PUBLIC ROUTES
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.route('/')
 def index():
@@ -95,23 +95,19 @@ def contact():
 def volunteer():
     if request.method == 'POST':
         full_name = request.form.get('full_name', '').strip()
-        email = request.form.get('email', '').strip()
-        phone = request.form.get('phone', '').strip()
-        skills = request.form.get('skills', '').strip()
-        message = request.form.get('message', '').strip()
+        email     = request.form.get('email', '').strip()
+        phone     = request.form.get('phone', '').strip()
+        skills    = request.form.get('skills', '').strip()
+        message   = request.form.get('message', '').strip()
 
         if not full_name or not email or not phone:
             flash('Please fill in all required fields.', 'danger')
             return redirect(url_for('volunteer'))
 
-        volunteer_entry = Volunteer(
-            full_name=full_name,
-            email=email,
-            phone=phone,
-            skills=skills,
-            message=message
-        )
-        db.session.add(volunteer_entry)
+        db.session.add(Volunteer(
+            full_name=full_name, email=email, phone=phone,
+            skills=skills, message=message,
+        ))
         db.session.commit()
         flash('Thank you for signing up to volunteer! We will contact you soon.', 'success')
         return redirect(url_for('volunteer'))
@@ -122,30 +118,27 @@ def volunteer():
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
     full_name = request.form.get('full_name', '').strip()
-    email = request.form.get('email', '').strip()
-    phone = request.form.get('phone', '').strip()
+    email     = request.form.get('email', '').strip()
+    phone     = request.form.get('phone', '').strip()
 
     if not full_name or not email:
         flash('Name and email are required for subscription.', 'danger')
         return redirect(request.referrer or url_for('index'))
 
-    existing = Subscriber.query.filter_by(email=email).first()
-    if existing:
+    if Subscriber.query.filter_by(email=email).first():
         flash('This email is already subscribed to our newsletter.', 'info')
         return redirect(request.referrer or url_for('index'))
 
-    subscriber = Subscriber(full_name=full_name, email=email, phone=phone or None)
-    db.session.add(subscriber)
+    db.session.add(Subscriber(full_name=full_name, email=email, phone=phone or None))
     db.session.commit()
-
-    # Attempt to send welcome email using saved settings
     _send_welcome_email(email, full_name)
-
     flash('You have successfully subscribed to our newsletter!', 'success')
     return redirect(request.referrer or url_for('index'))
 
 
-# ── Admin routes ─────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+#  ADMIN — AUTHENTICATION
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -155,14 +148,14 @@ def admin_login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        admin = AdminUser.query.filter_by(username=username).first()
+        admin    = AdminUser.query.filter_by(username=username).first()
 
         if admin and admin.check_password(password):
             login_user(admin, remember=False)
             flash('Welcome back!', 'success')
             return redirect(url_for('admin_dashboard'))
-        else:
-            flash('Invalid username or password.', 'danger')
+
+        flash('Invalid username or password.', 'danger')
 
     return render_template('admin_login.html')
 
@@ -175,21 +168,69 @@ def admin_logout():
     return redirect(url_for('admin_login'))
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  ADMIN — CHANGE PASSWORD
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.route('/admin/change-password', methods=['GET', 'POST'])
+@login_required
+def admin_change_password():
+    """Allow the currently logged-in admin to update their password."""
+    if request.method == 'POST':
+        current_pw = request.form.get('current_password', '')
+        new_pw     = request.form.get('new_password', '')
+        confirm_pw = request.form.get('confirm_password', '')
+
+        # 1 — current password must be correct
+        if not current_user.check_password(current_pw):
+            flash('Current password is incorrect.', 'danger')
+            return redirect(url_for('admin_change_password'))
+
+        # 2 — new password minimum length
+        if len(new_pw) < 8:
+            flash('New password must be at least 8 characters.', 'danger')
+            return redirect(url_for('admin_change_password'))
+
+        # 3 — confirmation must match
+        if new_pw != confirm_pw:
+            flash('New password and confirmation do not match.', 'danger')
+            return redirect(url_for('admin_change_password'))
+
+        # 4 — must actually be different
+        if new_pw == current_pw:
+            flash('New password must be different from your current password.', 'danger')
+            return redirect(url_for('admin_change_password'))
+
+        # All checks passed — hash and persist
+        current_user.set_password(new_pw)
+        db.session.commit()
+        logger.info('Admin "%s" changed their password successfully.', current_user.username)
+        flash('Password updated successfully. Use your new password next time you log in.', 'success')
+        return redirect(url_for('admin_change_password'))
+
+    return render_template('admin_change_password.html')
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  ADMIN — DASHBOARD
+# ════════════════════════════════════════════════════════════════════════════
+
 @app.route('/admin/dashboard')
 @login_required
 def admin_dashboard():
     subscribers = Subscriber.query.order_by(Subscriber.date_subscribed.desc()).all()
-    volunteers = Volunteer.query.order_by(Volunteer.date_submitted.desc()).all()
+    volunteers  = Volunteer.query.order_by(Volunteer.date_submitted.desc()).all()
+    now         = datetime.utcnow()
     stats = {
-        'total_subscribers': Subscriber.query.count(),
-        'total_volunteers': Volunteer.query.count(),
-        'new_this_month': Subscriber.query.filter(
-            db.extract('month', Subscriber.date_subscribed) == datetime.utcnow().month,
-            db.extract('year', Subscriber.date_subscribed) == datetime.utcnow().year
+        'total_subscribers':    Subscriber.query.count(),
+        'total_volunteers':     Volunteer.query.count(),
+        'new_this_month':       Subscriber.query.filter(
+            db.extract('month', Subscriber.date_subscribed) == now.month,
+            db.extract('year',  Subscriber.date_subscribed) == now.year,
         ).count(),
         'volunteers_this_month': Volunteer.query.filter(
-            db.extract('month', Volunteer.date_submitted) == datetime.utcnow().month,
-            db.extract('year', Volunteer.date_submitted) == datetime.utcnow().year
+            db.extract('month', Volunteer.date_submitted) == now.month,
+            db.extract('year',  Volunteer.date_submitted) == now.year,
         ).count(),
     }
     return render_template('admin_dashboard.html',
@@ -197,6 +238,10 @@ def admin_dashboard():
                            volunteers=volunteers,
                            stats=stats)
 
+
+# ════════════════════════════════════════════════════════════════════════════
+#  ADMIN — RECORDS
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.route('/admin/delete/subscriber/<int:sub_id>', methods=['POST'])
 @login_required
@@ -222,38 +267,36 @@ def delete_volunteer(vol_id):
 @login_required
 def export_subscribers():
     subscribers = Subscriber.query.order_by(Subscriber.date_subscribed.desc()).all()
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['ID', 'Full Name', 'Email', 'Phone', 'Date Subscribed'])
+    out = io.StringIO()
+    w   = csv.writer(out)
+    w.writerow(['ID', 'Full Name', 'Email', 'Phone', 'Date Subscribed'])
     for s in subscribers:
-        writer.writerow([s.id, s.full_name, s.email, s.phone or '',
-                         s.date_subscribed.strftime('%Y-%m-%d %H:%M')])
-    output.seek(0)
-    return Response(
-        output.getvalue(),
-        mimetype='text/csv',
-        headers={'Content-Disposition': 'attachment;filename=subscribers.csv'}
-    )
+        w.writerow([s.id, s.full_name, s.email, s.phone or '',
+                    s.date_subscribed.strftime('%Y-%m-%d %H:%M')])
+    out.seek(0)
+    return Response(out.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': 'attachment;filename=subscribers.csv'})
 
 
 @app.route('/admin/export/volunteers')
 @login_required
 def export_volunteers():
     volunteers = Volunteer.query.order_by(Volunteer.date_submitted.desc()).all()
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['ID', 'Full Name', 'Email', 'Phone', 'Skills', 'Message', 'Date Submitted'])
+    out = io.StringIO()
+    w   = csv.writer(out)
+    w.writerow(['ID', 'Full Name', 'Email', 'Phone', 'Skills', 'Message', 'Date Submitted'])
     for v in volunteers:
-        writer.writerow([v.id, v.full_name, v.email, v.phone,
-                         v.skills or '', v.message or '',
-                         v.date_submitted.strftime('%Y-%m-%d %H:%M')])
-    output.seek(0)
-    return Response(
-        output.getvalue(),
-        mimetype='text/csv',
-        headers={'Content-Disposition': 'attachment;filename=volunteers.csv'}
-    )
+        w.writerow([v.id, v.full_name, v.email, v.phone,
+                    v.skills or '', v.message or '',
+                    v.date_submitted.strftime('%Y-%m-%d %H:%M')])
+    out.seek(0)
+    return Response(out.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': 'attachment;filename=volunteers.csv'})
 
+
+# ════════════════════════════════════════════════════════════════════════════
+#  ADMIN — EMAIL SETTINGS
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.route('/admin/email-settings', methods=['GET', 'POST'])
 @login_required
@@ -266,15 +309,15 @@ def admin_email_settings():
 
     if request.method == 'POST':
         settings.sender_email = request.form.get('sender_email', '').strip()
-        settings.sender_name = request.form.get('sender_name', '').strip()
-        settings.smtp_host = request.form.get('smtp_host', '').strip()
-        port_str = request.form.get('smtp_port', '587').strip()
-        settings.smtp_port = int(port_str) if port_str.isdigit() else 587
+        settings.sender_name  = request.form.get('sender_name', '').strip()
+        settings.smtp_host    = request.form.get('smtp_host', '').strip()
+        port_raw = request.form.get('smtp_port', '587').strip()
+        settings.smtp_port    = int(port_raw) if port_raw.isdigit() else 587
         settings.mail_service = request.form.get('mail_service', 'smtp')
 
-        smtp_password = request.form.get('smtp_password', '').strip()
-        if smtp_password:
-            settings.set_smtp_password(smtp_password)
+        smtp_pw = request.form.get('smtp_password', '').strip()
+        if smtp_pw:
+            settings.set_smtp_password(smtp_pw)
 
         api_key = request.form.get('api_key', '').strip()
         if api_key:
@@ -291,11 +334,10 @@ def admin_email_settings():
 @app.route('/admin/test-smtp', methods=['POST'])
 @login_required
 def admin_test_smtp():
-    """Quick SMTP smoke-test — fires a test email to the sender address itself."""
     settings = EmailSettings.query.first()
-    cfg, cfg_err = _resolve_smtp_config(settings)
-    if cfg_err:
-        flash(f'Cannot test — configuration incomplete: {cfg_err}', 'danger')
+    cfg, err = _resolve_smtp_config(settings)
+    if err:
+        flash(f'Cannot test — configuration incomplete: {err}', 'danger')
         return redirect(url_for('admin_email_settings'))
 
     conn_ok, conn_err = _validate_smtp_connection(cfg)
@@ -303,17 +345,15 @@ def admin_test_smtp():
         flash(f'SMTP connection failed: {conn_err}', 'danger')
         return redirect(url_for('admin_email_settings'))
 
-    # Send a real test message to the sender's own inbox
     test_html = """
     <html><body style="font-family:Arial,sans-serif;color:#1e3a5f;padding:20px;">
-      <h2 style="color:#1a5276;">✓ SMTP test successful</h2>
+      <h2 style="color:#1a5276;">&#10003; SMTP test successful</h2>
       <p>Your HealthBridge email settings are working correctly.</p>
-      <p style="color:#5d7fa0;font-size:13px;">This message was sent from the Admin → Email Settings page.</p>
     </body></html>
     """
     ok, send_err = _send_single_email(
         cfg, cfg['sender_email'], 'Admin',
-        'HealthBridge – SMTP Test ✓', test_html
+        'HealthBridge – SMTP Test ✓', test_html,
     )
     if ok:
         flash(f'SMTP test passed ✓  A confirmation email was sent to {cfg["sender_email"]}.', 'success')
@@ -323,11 +363,14 @@ def admin_test_smtp():
     return redirect(url_for('admin_email_settings'))
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  ADMIN — SEND NEWSLETTER
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.route('/admin/send-newsletter', methods=['GET', 'POST'])
 @login_required
 def admin_send_newsletter():
-    settings = EmailSettings.query.first()
+    settings    = EmailSettings.query.first()
     subscribers = Subscriber.query.all()
 
     if request.method == 'POST':
@@ -338,23 +381,20 @@ def admin_send_newsletter():
             flash('Subject and body are required.', 'danger')
             return redirect(url_for('admin_send_newsletter'))
 
-        # ── Pre-flight: resolve & validate SMTP config BEFORE iterating ──────
         cfg, cfg_err = _resolve_smtp_config(settings)
         if cfg_err:
-            flash(f'Cannot send – email is not properly configured: {cfg_err}', 'danger')
+            flash(f'Cannot send – email not configured: {cfg_err}', 'danger')
             return redirect(url_for('admin_send_newsletter'))
 
         if not subscribers:
             flash('There are no subscribers to send to.', 'warning')
             return redirect(url_for('admin_send_newsletter'))
 
-        # Quick connection test so we fail fast before looping over subscribers
         conn_ok, conn_err = _validate_smtp_connection(cfg)
         if not conn_ok:
-            flash(f'SMTP connection test failed — no emails sent. {conn_err}', 'danger')
+            flash(f'SMTP connection failed — no emails sent. {conn_err}', 'danger')
             return redirect(url_for('admin_send_newsletter'))
 
-        # ── Send loop ─────────────────────────────────────────────────────────
         sent, failed, errors = 0, 0, []
         for sub in subscribers:
             ok, err = _send_single_email(cfg, sub.email, sub.full_name, subject, body)
@@ -364,23 +404,16 @@ def admin_send_newsletter():
                 failed += 1
                 errors.append(f'{sub.email}: {err}')
 
-        # ── User feedback ──────────────────────────────────────────────────────
         if failed == 0:
-            flash(f'✓ Newsletter sent successfully to all {sent} subscriber(s).', 'success')
+            flash(f'✓ Newsletter sent to all {sent} subscriber(s).', 'success')
         elif sent == 0:
             flash(f'✗ All {failed} emails failed. First error: {errors[0]}', 'danger')
         else:
-            flash(
-                f'Partial success: {sent} sent, {failed} failed. '
-                f'First failure: {errors[0]}',
-                'warning'
-            )
+            flash(f'Partial: {sent} sent, {failed} failed. First failure: {errors[0]}', 'warning')
 
-        logger.info('Newsletter send complete — sent=%d failed=%d subject="%s"',
-                    sent, failed, subject)
+        logger.info('Newsletter send — sent=%d failed=%d subject="%s"', sent, failed, subject)
         return redirect(url_for('admin_send_newsletter'))
 
-    # ── GET: show pre-flight status banner ────────────────────────────────────
     cfg, cfg_err = _resolve_smtp_config(settings)
     return render_template('admin_send_newsletter.html',
                            settings=settings,
@@ -389,17 +422,11 @@ def admin_send_newsletter():
                            smtp_error=cfg_err)
 
 
-# ── Email helpers ─────────────────────────────────────────────────────────────
-#
-# Priority order for SMTP credentials:
-#   1. Environment variables  (Render dashboard / .env file)
-#   2. Values saved in the DB via the Admin → Email Settings page
-#
-# This means you can configure once on Render via env vars and never touch the
-# DB, OR use the admin UI, OR mix both (env vars win when present).
-# ─────────────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+#  EMAIL HELPERS
+# ════════════════════════════════════════════════════════════════════════════
+# Credential priority: env vars (Render / .env) > DB (Admin → Email Settings)
 
-# Typed exceptions we explicitly handle – keeps bare `except` out of the code.
 _SMTP_ERRORS = (
     smtplib.SMTPAuthenticationError,
     smtplib.SMTPConnectError,
@@ -407,28 +434,20 @@ _SMTP_ERRORS = (
     smtplib.SMTPRecipientsRefused,
     smtplib.SMTPException,
     socket.timeout,
-    OSError,           # covers ConnectionRefusedError, network unreachable, etc.
+    OSError,
 )
-
-# Gunicorn workers must not hang waiting for a broken SMTP server.
-_SMTP_TIMEOUT = 15   # seconds
+_SMTP_TIMEOUT = 15  # seconds — keeps Gunicorn workers from hanging
 
 
 def _resolve_smtp_config(settings=None):
-    """
-    Return a dict with the effective SMTP config, merging env vars (priority)
-    with DB-stored settings.  Returns None if the minimum required fields are
-    missing so callers can give a clear error message.
-    """
     if settings is None:
         settings = EmailSettings.query.first()
 
-    # Env vars override DB (safe on Render; also lets .env work locally)
-    sender_email  = os.environ.get('SMTP_SENDER_EMAIL')  or (settings and settings.sender_email)  or ''
-    sender_name   = os.environ.get('SMTP_SENDER_NAME')   or (settings and settings.sender_name)   or 'HealthBridge NGO'
-    smtp_host     = os.environ.get('SMTP_HOST')          or (settings and settings.smtp_host)      or ''
-    smtp_password = os.environ.get('SMTP_PASSWORD')      or (settings and settings.get_smtp_password()) or ''
-    smtp_port_raw = os.environ.get('SMTP_PORT')          or (settings and settings.smtp_port)      or 587
+    sender_email  = os.environ.get('SMTP_SENDER_EMAIL') or (settings and settings.sender_email)  or ''
+    sender_name   = os.environ.get('SMTP_SENDER_NAME')  or (settings and settings.sender_name)   or 'HealthBridge NGO'
+    smtp_host     = os.environ.get('SMTP_HOST')         or (settings and settings.smtp_host)      or ''
+    smtp_password = os.environ.get('SMTP_PASSWORD')     or (settings and settings.get_smtp_password()) or ''
+    smtp_port_raw = os.environ.get('SMTP_PORT')         or (settings and settings.smtp_port)      or 587
 
     try:
         smtp_port = int(smtp_port_raw)
@@ -436,30 +455,24 @@ def _resolve_smtp_config(settings=None):
         smtp_port = 587
 
     if not sender_email:
-        return None, 'Sender email is not configured. Add it in Admin → Email Settings or set SMTP_SENDER_EMAIL env var.'
+        return None, 'Sender email not configured. Set it in Admin → Email Settings or SMTP_SENDER_EMAIL env var.'
     if not smtp_host:
-        return None, 'SMTP host is not configured. Add it in Admin → Email Settings or set SMTP_HOST env var.'
+        return None, 'SMTP host not configured. Set it in Admin → Email Settings or SMTP_HOST env var.'
     if not smtp_password:
-        return None, 'SMTP password is not configured. Add it in Admin → Email Settings or set SMTP_PASSWORD env var.'
+        return None, 'SMTP password not configured. Set it in Admin → Email Settings or SMTP_PASSWORD env var.'
 
     return {
-        'sender_email': sender_email,
-        'sender_name':  sender_name,
-        'smtp_host':    smtp_host,
-        'smtp_port':    smtp_port,
+        'sender_email':  sender_email,
+        'sender_name':   sender_name,
+        'smtp_host':     smtp_host,
+        'smtp_port':     smtp_port,
         'smtp_password': smtp_password,
     }, None
 
 
 def _validate_smtp_connection(cfg):
-    """
-    Open and immediately close an SMTP connection to verify credentials.
-    Returns (True, None) on success or (False, human-readable error string).
-    Used by the Test Connection button and pre-flight check before bulk send.
-    """
     try:
-        with smtplib.SMTP(cfg['smtp_host'], cfg['smtp_port'],
-                          timeout=_SMTP_TIMEOUT) as server:
+        with smtplib.SMTP(cfg['smtp_host'], cfg['smtp_port'], timeout=_SMTP_TIMEOUT) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
@@ -467,14 +480,12 @@ def _validate_smtp_connection(cfg):
         logger.info('SMTP test connection succeeded for %s', cfg['sender_email'])
         return True, None
     except smtplib.SMTPAuthenticationError:
-        return False, ('Gmail rejected the login. Make sure you are using a '
-                       '16-character App Password (not your regular Gmail password) '
-                       'and that 2-Step Verification is enabled on the account.')
+        return False, ('Gmail rejected the login. Use a 16-character App Password, '
+                       'not your regular Gmail password.')
     except smtplib.SMTPConnectError as e:
-        return False, f'Could not connect to {cfg["smtp_host"]}:{cfg["smtp_port"]}. Check the SMTP host and port. ({e})'
+        return False, f'Could not connect to {cfg["smtp_host"]}:{cfg["smtp_port"]}. ({e})'
     except socket.timeout:
-        return False, (f'Connection to {cfg["smtp_host"]}:{cfg["smtp_port"]} timed out after '
-                       f'{_SMTP_TIMEOUT}s. Check host/port or your network.')
+        return False, f'Connection timed out after {_SMTP_TIMEOUT}s.'
     except OSError as e:
         return False, f'Network error: {e}'
     except _SMTP_ERRORS as e:
@@ -482,65 +493,55 @@ def _validate_smtp_connection(cfg):
 
 
 def _send_single_email(cfg, to_email, to_name, subject, body_html):
-    """
-    Send one email.  Returns (True, None) or (False, error_string).
-    Never raises – all SMTP exceptions are caught and returned as strings.
-    """
     try:
         msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From']    = f'{cfg["sender_name"]} <{cfg["sender_email"]}>'
-        msg['To']      = f'{to_name} <{to_email}>'
+        msg['Subject']  = subject
+        msg['From']     = f'{cfg["sender_name"]} <{cfg["sender_email"]}>'
+        msg['To']       = f'{to_name} <{to_email}>'
         msg['Reply-To'] = cfg['sender_email']
         msg.attach(MIMEText(body_html, 'html'))
 
-        with smtplib.SMTP(cfg['smtp_host'], cfg['smtp_port'],
-                          timeout=_SMTP_TIMEOUT) as server:
+        with smtplib.SMTP(cfg['smtp_host'], cfg['smtp_port'], timeout=_SMTP_TIMEOUT) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(cfg['sender_email'], cfg['smtp_password'])
             server.sendmail(cfg['sender_email'], to_email, msg.as_string())
 
-        logger.info('Email sent OK → %s', to_email)
+        logger.info('Email sent → %s', to_email)
         return True, None
 
     except smtplib.SMTPAuthenticationError:
         err = 'SMTP authentication failed. Check App Password.'
-        logger.error('SMTPAuthenticationError sending to %s', to_email)
+        logger.error(err)
         return False, err
     except smtplib.SMTPRecipientsRefused:
-        err = f'Recipient address refused by server: {to_email}'
+        err = f'Recipient refused: {to_email}'
         logger.warning(err)
         return False, err
     except smtplib.SMTPServerDisconnected as e:
-        err = f'Server disconnected unexpectedly: {e}'
+        err = f'Server disconnected: {e}'
         logger.error(err)
         return False, err
     except socket.timeout:
-        err = f'SMTP connection timed out after {_SMTP_TIMEOUT}s.'
+        err = f'Timed out after {_SMTP_TIMEOUT}s.'
         logger.error(err)
         return False, err
     except OSError as e:
-        err = f'Network error while sending to {to_email}: {e}'
+        err = f'Network error: {e}'
         logger.error(err)
         return False, err
     except smtplib.SMTPException as e:
-        err = f'SMTP error sending to {to_email}: {e}'
+        err = f'SMTP error: {e}'
         logger.error(err)
         return False, err
 
 
 def _send_welcome_email(to_email, to_name):
-    """
-    Fire a welcome email after subscription.
-    Errors are logged but never bubble up to the user-facing request.
-    """
     cfg, err = _resolve_smtp_config()
     if err:
         logger.info('Welcome email skipped (%s): %s', to_email, err)
         return
-
     subject = f'Welcome to {cfg["sender_name"]} Newsletter!'
     body_html = f"""
     <html>
@@ -550,8 +551,8 @@ def _send_welcome_email(to_email, to_name):
       </div>
       <div style="background:#f0f7fd;padding:28px 32px;border-radius:0 0 10px 10px;border:1px solid #d6eaf8;">
         <p style="font-size:16px;">Hi <strong>{to_name}</strong>,</p>
-        <p>Thank you for subscribing to our newsletter. You'll receive updates on our
-        health outreach programs, community events, and volunteer opportunities.</p>
+        <p>Thank you for subscribing. You will receive updates on our health outreach programs,
+           community events, and volunteer opportunities.</p>
         <p>Together we can make a real difference.</p>
         <br>
         <p style="color:#5d7fa0;font-size:13px;">— {cfg["sender_name"]}</p>
@@ -564,7 +565,9 @@ def _send_welcome_email(to_email, to_name):
         logger.warning('Welcome email failed for %s: %s', to_email, send_err)
 
 
-# ── Entry point ──────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+#  ENTRY POINT
+# ════════════════════════════════════════════════════════════════════════════
 
 init_db()
 
