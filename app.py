@@ -390,11 +390,10 @@ def admin_send_newsletter():
             flash('There are no subscribers to send to.', 'warning')
             return redirect(url_for('admin_send_newsletter'))
 
-        conn_ok, conn_err = _validate_smtp_connection(cfg)
-        if not conn_ok:
-            flash(f'SMTP connection failed — no emails sent. {conn_err}', 'danger')
-            return redirect(url_for('admin_send_newsletter'))
-
+        # No separate pre-flight connection — _send_single_email handles every
+        # error class (auth, network, TLS, refused) and returns (False, msg).
+        # A redundant validate call would open+close a connection for nothing
+        # and double the failure surface before any email is sent.
         sent, failed, errors = 0, 0, []
         for sub in subscribers:
             ok, err = _send_single_email(cfg, sub.email, sub.full_name, subject, body)
@@ -426,41 +425,120 @@ def admin_send_newsletter():
 #  EMAIL HELPERS
 # ════════════════════════════════════════════════════════════════════════════
 # Credential priority: env vars (Render / .env) > DB (Admin → Email Settings)
+#
+# ROOT-CAUSE NOTE — "Network is unreachable" / Errno 97 / Errno 101
+# ──────────────────────────────────────────────────────────────────
+# smtplib.SMTP(host, port) calls socket.create_connection() internally.
+# create_connection() iterates through ALL getaddrinfo() results in order.
+# Gmail's DNS returns IPv6 addresses *before* IPv4.  On hosts with no IPv6
+# routing (many cloud sandboxes, Render free tier, Docker containers) the
+# very first connect attempt raises OSError(97, 'Address family not
+# supported') or OSError(101, 'Network is unreachable') and Python does NOT
+# fall through to the next address — it raises immediately.
+#
+# Fix: _smtp_connect() resolves only AF_INET (IPv4) addresses first and
+# builds a manual socket before handing it to smtplib.  This guarantees we
+# never attempt an IPv6 connection on an IPv4-only host.
 
-_SMTP_ERRORS = (
-    smtplib.SMTPAuthenticationError,
-    smtplib.SMTPConnectError,
-    smtplib.SMTPServerDisconnected,
-    smtplib.SMTPRecipientsRefused,
-    smtplib.SMTPException,
-    socket.timeout,
-    OSError,
-)
-_SMTP_TIMEOUT = 15  # seconds — keeps Gunicorn workers from hanging
+import errno as _errno_mod
+
+_SMTP_TIMEOUT = 15          # seconds — prevents Gunicorn workers from hanging
+_NETWORK_ERRNOS = frozenset({
+    _errno_mod.ENETUNREACH,   # 101  Network is unreachable
+    _errno_mod.EAFNOSUPPORT,  # 97   Address family not supported by protocol
+    _errno_mod.ECONNREFUSED,  # 111  Connection refused
+    _errno_mod.EHOSTUNREACH,  # 113  No route to host
+})
+
+
+def _smtp_connect(host: str, port: int) -> smtplib.SMTP:
+    """
+    Return a fresh smtplib.SMTP instance whose underlying socket was created
+    explicitly over IPv4 (AF_INET).  This sidesteps the IPv6-first ordering
+    that getaddrinfo() returns on dual-stack hosts where IPv6 is not routed,
+    which would otherwise raise Errno 97/101 before Python ever tries IPv4.
+    """
+    logger.debug('SMTP connect → %s:%d (IPv4-forced)', host, port)
+
+    # Resolve only IPv4 addresses
+    try:
+        records = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        raise OSError(f'DNS resolution failed for {host}: {e}') from e
+
+    if not records:
+        raise OSError(f'No IPv4 address found for {host}')
+
+    ipv4_addr = records[0][4][0]
+    logger.debug('Resolved %s → %s (IPv4)', host, ipv4_addr)
+
+    # Build an explicit IPv4 socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(_SMTP_TIMEOUT)
+    try:
+        sock.connect((ipv4_addr, port))
+    except OSError:
+        sock.close()
+        raise
+
+    # Attach the pre-connected socket to a bare SMTP instance.
+    # smtplib.SMTP.__init__ with no host arg skips its internal connect, which
+    # is what we want — but it also leaves self._host = '' (empty string).
+    # starttls() later calls:
+    #     context.wrap_socket(self.sock, server_hostname=self._host)
+    # ssl raises ValueError if server_hostname is '' or starts with '.'.
+    # Fix: set _host explicitly before any TLS call.
+    smtp = smtplib.SMTP(timeout=_SMTP_TIMEOUT)
+    smtp._host = host          # ← must be set for starttls() SSL SNI to work
+    smtp.sock  = sock
+    smtp.file  = smtp.sock.makefile('rb')
+
+    # Read the server greeting banner (220) — replaces what __init__ would do
+    code, msg = smtp.getreply()
+    if code != 220:
+        smtp.close()
+        raise smtplib.SMTPConnectError(code, msg)
+
+    logger.debug('SMTP banner: %d %s', code, msg[:60])
+    return smtp
 
 
 def _resolve_smtp_config(settings=None):
+    """
+    Build the SMTP config dict from env vars (highest priority) with DB as
+    fallback.  Returns (cfg_dict, None) on success or (None, error_str) on
+    missing fields — never raises.
+    """
     if settings is None:
         settings = EmailSettings.query.first()
 
-    sender_email  = os.environ.get('SMTP_SENDER_EMAIL') or (settings and settings.sender_email)  or ''
-    sender_name   = os.environ.get('SMTP_SENDER_NAME')  or (settings and settings.sender_name)   or 'HealthBridge NGO'
-    smtp_host     = os.environ.get('SMTP_HOST')         or (settings and settings.smtp_host)      or ''
+    sender_email  = os.environ.get('SMTP_SENDER_EMAIL') or (settings and settings.sender_email)        or ''
+    sender_name   = os.environ.get('SMTP_SENDER_NAME')  or (settings and settings.sender_name)         or 'HealthBridge NGO'
+    smtp_host     = os.environ.get('SMTP_HOST')         or (settings and settings.smtp_host)           or ''
     smtp_password = os.environ.get('SMTP_PASSWORD')     or (settings and settings.get_smtp_password()) or ''
-    smtp_port_raw = os.environ.get('SMTP_PORT')         or (settings and settings.smtp_port)      or 587
+    smtp_port_raw = os.environ.get('SMTP_PORT')         or (settings and settings.smtp_port)           or 587
 
     try:
         smtp_port = int(smtp_port_raw)
     except (TypeError, ValueError):
         smtp_port = 587
 
+    # Detailed missing-field errors help the admin fix the issue directly
     if not sender_email:
-        return None, 'Sender email not configured. Set it in Admin → Email Settings or SMTP_SENDER_EMAIL env var.'
+        return None, ('Sender email not set. '
+                      'Go to Admin → Email Settings or set SMTP_SENDER_EMAIL env var.')
     if not smtp_host:
-        return None, 'SMTP host not configured. Set it in Admin → Email Settings or SMTP_HOST env var.'
+        return None, ('SMTP host not set. '
+                      'Go to Admin → Email Settings or set SMTP_HOST env var.')
     if not smtp_password:
-        return None, 'SMTP password not configured. Set it in Admin → Email Settings or SMTP_PASSWORD env var.'
+        return None, ('SMTP password not set. '
+                      'Go to Admin → Email Settings or set SMTP_PASSWORD env var.')
 
+    logger.debug(
+        'SMTP config resolved — from=%s host=%s port=%d (source: %s)',
+        sender_email, smtp_host, smtp_port,
+        'env' if os.environ.get('SMTP_SENDER_EMAIL') else 'db',
+    )
     return {
         'sender_email':  sender_email,
         'sender_name':   sender_name,
@@ -470,29 +548,84 @@ def _resolve_smtp_config(settings=None):
     }, None
 
 
+def _friendly_network_error(exc, host, port):
+    """Convert low-level OS network errors into admin-readable messages."""
+    if isinstance(exc, OSError) and exc.errno in _NETWORK_ERRNOS:
+        return (
+            f'Cannot reach {host}:{port} — outbound SMTP is blocked. '
+            f'On Render, outbound port 587 must be open. '
+            f'Try port 465 (SSL) if 587 is firewalled. '
+            f'OS error: [{exc.errno}] {exc.strerror}'
+        )
+    if isinstance(exc, (socket.timeout, TimeoutError)):
+        return f'Connection to {host}:{port} timed out after {_SMTP_TIMEOUT}s. Check host and port.'
+    return f'Network error connecting to {host}:{port}: {exc}'
+
+
 def _validate_smtp_connection(cfg):
+    """
+    Open a real SMTP connection, run STARTTLS and login, then close cleanly.
+    Returns (True, None) on success or (False, human_readable_error) on any
+    failure.  Never raises — safe to call from a Flask route.
+    """
+    host, port = cfg['smtp_host'], cfg['smtp_port']
+    logger.info('SMTP pre-flight check — host=%s port=%d user=%s', host, port, cfg['sender_email'])
+
     try:
-        with smtplib.SMTP(cfg['smtp_host'], cfg['smtp_port'], timeout=_SMTP_TIMEOUT) as server:
+        server = _smtp_connect(host, port)
+        try:
             server.ehlo()
             server.starttls()
             server.ehlo()
+            logger.debug('STARTTLS negotiated')
             server.login(cfg['sender_email'], cfg['smtp_password'])
-        logger.info('SMTP test connection succeeded for %s', cfg['sender_email'])
+            logger.info('SMTP login OK — %s', cfg['sender_email'])
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
         return True, None
-    except smtplib.SMTPAuthenticationError:
-        return False, ('Gmail rejected the login. Use a 16-character App Password, '
-                       'not your regular Gmail password.')
+
+    except smtplib.SMTPAuthenticationError as e:
+        msg = (
+            'Gmail rejected the login credentials. '
+            'You must use a 16-character App Password (not your regular Gmail password). '
+            'Generate one at myaccount.google.com → Security → App passwords. '
+            f'(SMTP code {e.smtp_code})'
+        )
+        logger.error('SMTP auth failed for %s: %s', cfg['sender_email'], e)
+        return False, msg
+
     except smtplib.SMTPConnectError as e:
-        return False, f'Could not connect to {cfg["smtp_host"]}:{cfg["smtp_port"]}. ({e})'
-    except socket.timeout:
-        return False, f'Connection timed out after {_SMTP_TIMEOUT}s.'
+        msg = f'SMTP server refused connection to {host}:{port}. ({e})'
+        logger.error(msg)
+        return False, msg
+
+    except smtplib.SMTPException as e:
+        msg = f'SMTP protocol error during handshake: {e}'
+        logger.error(msg)
+        return False, msg
+
     except OSError as e:
-        return False, f'Network error: {e}'
-    except _SMTP_ERRORS as e:
-        return False, f'SMTP error: {e}'
+        msg = _friendly_network_error(e, host, port)
+        logger.error('SMTP connect OSError for %s:%d — %s', host, port, e)
+        return False, msg
+
+    except Exception as e:
+        msg = f'Unexpected error during SMTP test: {type(e).__name__}: {e}'
+        logger.exception(msg)
+        return False, msg
 
 
 def _send_single_email(cfg, to_email, to_name, subject, body_html):
+    """
+    Send one HTML email.  Returns (True, None) on success or (False, err_str)
+    on failure.  Never raises — safe to call in a loop from a Flask route.
+    """
+    host, port = cfg['smtp_host'], cfg['smtp_port']
+    logger.info('Sending email → %s  subject="%s"  host=%s:%d',
+                to_email, subject[:50], host, port)
     try:
         msg = MIMEMultipart('alternative')
         msg['Subject']  = subject
@@ -501,65 +634,83 @@ def _send_single_email(cfg, to_email, to_name, subject, body_html):
         msg['Reply-To'] = cfg['sender_email']
         msg.attach(MIMEText(body_html, 'html'))
 
-        with smtplib.SMTP(cfg['smtp_host'], cfg['smtp_port'], timeout=_SMTP_TIMEOUT) as server:
+        server = _smtp_connect(host, port)
+        try:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(cfg['sender_email'], cfg['smtp_password'])
+            logger.debug('SMTP login OK, sending to %s', to_email)
             server.sendmail(cfg['sender_email'], to_email, msg.as_string())
+            logger.info('Email delivered → %s', to_email)
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
 
-        logger.info('Email sent → %s', to_email)
         return True, None
 
-    except smtplib.SMTPAuthenticationError:
-        err = 'SMTP authentication failed. Check App Password.'
-        logger.error(err)
+    except smtplib.SMTPAuthenticationError as e:
+        err = (
+            'Gmail rejected the App Password. '
+            'Regenerate it at myaccount.google.com → Security → App passwords. '
+            f'(SMTP {e.smtp_code})'
+        )
+        logger.error('Auth error sending to %s: %s', to_email, e)
         return False, err
-    except smtplib.SMTPRecipientsRefused:
-        err = f'Recipient refused: {to_email}'
+
+    except smtplib.SMTPRecipientsRefused as e:
+        err = f'Recipient address refused by server: {to_email}. ({e})'
         logger.warning(err)
         return False, err
+
     except smtplib.SMTPServerDisconnected as e:
-        err = f'Server disconnected: {e}'
-        logger.error(err)
+        err = f'Server disconnected unexpectedly: {e}'
+        logger.error('Disconnected sending to %s: %s', to_email, e)
         return False, err
-    except socket.timeout:
-        err = f'Timed out after {_SMTP_TIMEOUT}s.'
-        logger.error(err)
-        return False, err
-    except OSError as e:
-        err = f'Network error: {e}'
-        logger.error(err)
-        return False, err
+
     except smtplib.SMTPException as e:
-        err = f'SMTP error: {e}'
-        logger.error(err)
+        err = f'SMTP protocol error: {e}'
+        logger.error('SMTPException sending to %s: %s', to_email, e)
+        return False, err
+
+    except OSError as e:
+        err = _friendly_network_error(e, host, port)
+        logger.error('OSError sending to %s — errno=%s: %s', to_email, e.errno, e)
+        return False, err
+
+    except Exception as e:
+        err = f'Unexpected error sending to {to_email}: {type(e).__name__}: {e}'
+        logger.exception(err)
         return False, err
 
 
 def _send_welcome_email(to_email, to_name):
+    """Fire-and-forget welcome email; logs but never raises or crashes the caller."""
     cfg, err = _resolve_smtp_config()
     if err:
-        logger.info('Welcome email skipped (%s): %s', to_email, err)
+        logger.info('Welcome email skipped for %s (no SMTP config): %s', to_email, err)
         return
+
     subject = f'Welcome to {cfg["sender_name"]} Newsletter!'
-    body_html = f"""
-    <html>
-    <body style="font-family:Arial,sans-serif;color:#1e3a5f;max-width:600px;margin:0 auto;padding:24px;">
-      <div style="background:linear-gradient(135deg,#1a5276,#2471a3);padding:28px 32px;border-radius:10px 10px 0 0;">
-        <h1 style="color:#ffffff;font-size:22px;margin:0;">Welcome to HealthBridge!</h1>
-      </div>
-      <div style="background:#f0f7fd;padding:28px 32px;border-radius:0 0 10px 10px;border:1px solid #d6eaf8;">
-        <p style="font-size:16px;">Hi <strong>{to_name}</strong>,</p>
-        <p>Thank you for subscribing. You will receive updates on our health outreach programs,
-           community events, and volunteer opportunities.</p>
-        <p>Together we can make a real difference.</p>
-        <br>
-        <p style="color:#5d7fa0;font-size:13px;">— {cfg["sender_name"]}</p>
-      </div>
-    </body>
-    </html>
-    """
+    body_html = f"""\
+<html>
+<body style="font-family:Arial,sans-serif;color:#1e3a5f;max-width:600px;margin:0 auto;padding:24px;">
+  <div style="background:linear-gradient(135deg,#1a5276,#2471a3);padding:28px 32px;border-radius:10px 10px 0 0;">
+    <h1 style="color:#ffffff;font-size:22px;margin:0;">Welcome to HealthBridge!</h1>
+  </div>
+  <div style="background:#f0f7fd;padding:28px 32px;border-radius:0 0 10px 10px;border:1px solid #d6eaf8;">
+    <p style="font-size:16px;">Hi <strong>{to_name}</strong>,</p>
+    <p>Thank you for subscribing. You will receive updates on our health outreach programs,
+       community events, and volunteer opportunities.</p>
+    <p>Together we can make a real difference.</p>
+    <br>
+    <p style="color:#5d7fa0;font-size:13px;">— {cfg["sender_name"]}</p>
+  </div>
+</body>
+</html>"""
+
     ok, send_err = _send_single_email(cfg, to_email, to_name, subject, body_html)
     if not ok:
         logger.warning('Welcome email failed for %s: %s', to_email, send_err)
