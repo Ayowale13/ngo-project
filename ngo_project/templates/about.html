@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}About Us – HealthBridge NGO{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<section class="page-hero">
+  <div class="container position-relative" style="z-index:2;padding-bottom:2rem;">
+    <span class="hero-eyebrow d-inline-block mb-3"><i class="bi bi-people-fill me-1"></i> Who We Are</span>
+    <h1>About HealthBridge</h1>
+    <p class="mt-2">A story of compassion, community, and the power of collective care.</p>
+  </div>
+</section>cd ngo_project
+
+<!-- Mission -->
+<section class="section-light">
+  <div class="container">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-6">
+        <span class="section-eyebrow">Our Foundation</span>
+        <h2 class="section-title">Who We Are</h2>
+        <p style="color:var(--text-muted);line-height:1.9;">HealthBridge was founded in 2016 by a group of medical professionals and community advocates who saw a critical gap in healthcare access for underserved populations across Nigeria.</p>
+        <p style="color:var(--text-muted);line-height:1.9;margin-top:1rem;">What began as weekend clinic outreaches in two communities has grown into a nationally recognized health NGO operating across 12 states, serving over 12,000 individuals annually.</p>
+        <div class="impact-quote mt-4">"We believe healthcare is not a privilege — it is a fundamental right every human being deserves."</div>
+      </div>
+      <div class="col-lg-6">
+        <div class="row g-3">
+          <div class="col-6">
+            <div class="snw-card text-center">
+              <div class="impact-number">2016</div>
+              <div class="impact-label mt-1">Year Founded</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="snw-card text-center">
+              <div class="impact-number">12</div>
+              <div class="impact-label mt-1">States</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="snw-card text-center">
+              <div class="impact-number">350+</div>
+              <div class="impact-label mt-1">Volunteers</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="snw-card text-center">
+              <div class="impact-number">12K+</div>
+              <div class="impact-label mt-1">Patients</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Values -->
+<section class="section-blue">
+  <div class="container">
+    <div class="text-center mb-5">
+      <span class="section-eyebrow">What Guides Us</span>
+      <h2 class="section-title">Our Core Values</h2>
+    </div>
+    <div class="row g-4">
+      {% set values = [
+        ("bi-shield-heart","Compassion","We approach every interaction with empathy, dignity, and genuine care for the whole person."),
+        ("bi-stars","Excellence","We uphold the highest standards in health delivery, volunteer training, and program management."),
+        ("bi-people","Community","We center the needs and voices of the communities we serve in everything we do."),
+        ("bi-transparency","Integrity","We operate with full transparency, accountability, and ethical responsibility.")
+      ] %}
+      {% for icon, title, desc in values %}
+      <div class="col-md-6 col-lg-3">
+        <div class="snw-card text-center">
+          <div class="card-icon mx-auto"><i class="bi {{ icon }}"></i></div>
+          <h4>{{ title }}</h4>
+          <p>{{ desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Team -->
+<section class="section-light">
+  <div class="container">
+    <div class="text-center mb-5">
+      <span class="section-eyebrow">The People</span>
+      <h2 class="section-title">Meet Our Leadership Team</h2>
+    </div>
+    <div class="row g-4 justify-content-center">
+      {% set team = [
+        ("👩‍⚕️","Dr. Amara Okonkwo","Executive Director","Physician & public health specialist with 18 years of field experience."),
+        ("👨‍💼","Emeka Adeyemi","Programs Manager","Former UNICEF programme officer driving community health initiatives."),
+        ("👩‍🔬","Dr. Fatima Bello","Medical Director","Specialist in maternal and child health, leading clinical programs."),
+        ("👨‍💻","Tunde Lawal","Operations Lead","Systems thinker ensuring smooth day-to-day operations and outreach logistics.")
+      ] %}
+      {% for emoji, name, role, bio in team %}
+      <div class="col-sm-6 col-lg-3">
+        <div class="team-card">
+          <div class="team-avatar">{{ emoji }}</div>
+          <h5 style="color:var(--sapphire);font-size:1rem;margin-bottom:.2rem;">{{ name }}</h5>
+          <div style="font-size:.82rem;color:var(--ocean-400);font-weight:600;margin-bottom:.7rem;">{{ role }}</div>
+          <p style="font-size:.88rem;color:var(--text-muted);">{{ bio }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="newsletter-section">
+  <div class="container text-center">
+    <h2 class="mb-3">Join Our Mission</h2>
+    <p class="mb-4" style="color:rgba(255,255,255,.75);max-width:500px;margin:0 auto 2rem;">Whether as a volunteer, donor, or community partner — there's a place for you at HealthBridge.</p>
+    <div class="d-flex gap-3 justify-content-center flex-wrap">
+      <a href="{{ url_for('volunteer') }}" class="btn-snw"><i class="bi bi-people-fill"></i> Volunteer With Us</a>
+      <a href="{{ url_for('contact') }}" class="btn-snw-outline"><i class="bi bi-envelope"></i> Get In Touch</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

@@ -1,11 +1,7 @@
 import os
 import csv
 import io
-import socket
-import smtplib
 import logging
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 # Load .env when present (local dev). No-op if file is missing.
@@ -57,9 +53,6 @@ def init_db():
         if not EmailSettings.query.first():
             db.session.add(EmailSettings(
                 sender_name='NGO Outreach Team',
-                smtp_host='smtp.gmail.com',
-                smtp_port=587,
-                mail_service='smtp',
             ))
             db.session.commit()
 
@@ -308,57 +301,45 @@ def admin_email_settings():
         db.session.commit()
 
     if request.method == 'POST':
-        settings.sender_email = request.form.get('sender_email', '').strip()
+        # Resend-only: store sender identity only.
+        # API key comes exclusively from RESEND_API_KEY env var — never stored in DB.
         settings.sender_name  = request.form.get('sender_name', '').strip()
-        settings.smtp_host    = request.form.get('smtp_host', '').strip()
-        port_raw = request.form.get('smtp_port', '587').strip()
-        settings.smtp_port    = int(port_raw) if port_raw.isdigit() else 587
-        settings.mail_service = request.form.get('mail_service', 'smtp')
-
-        smtp_pw = request.form.get('smtp_password', '').strip()
-        if smtp_pw:
-            settings.set_smtp_password(smtp_pw)
-
-        api_key = request.form.get('api_key', '').strip()
-        if api_key:
-            settings.set_api_key(api_key)
-
-        settings.updated_at = datetime.utcnow()
+        settings.sender_email = request.form.get('sender_email', '').strip()
+        settings.updated_at   = datetime.utcnow()
         db.session.commit()
-        flash('Email settings saved successfully.', 'success')
+        flash('Sender settings saved successfully.', 'success')
         return redirect(url_for('admin_email_settings'))
 
-    return render_template('admin_email_settings.html', settings=settings)
+    resend_key_set = bool(os.environ.get('RESEND_API_KEY', ''))
+    return render_template('admin_email_settings.html',
+                           settings=settings,
+                           resend_key_set=resend_key_set)
 
 
-@app.route('/admin/test-smtp', methods=['POST'])
+@app.route('/admin/test-smtp', methods=['POST'])   # URL kept for any saved bookmarks
 @login_required
 def admin_test_smtp():
+    """Send a live test email via Resend to confirm the API key and sender work."""
     settings = EmailSettings.query.first()
-    cfg, err = _resolve_smtp_config(settings)
+    cfg, err = _resolve_resend_config(settings)
     if err:
-        flash(f'Cannot test — configuration incomplete: {err}', 'danger')
-        return redirect(url_for('admin_email_settings'))
-
-    conn_ok, conn_err = _validate_smtp_connection(cfg)
-    if not conn_ok:
-        flash(f'SMTP connection failed: {conn_err}', 'danger')
+        flash(f'Cannot send test — {err}', 'danger')
         return redirect(url_for('admin_email_settings'))
 
     test_html = """
     <html><body style="font-family:Arial,sans-serif;color:#1e3a5f;padding:20px;">
-      <h2 style="color:#1a5276;">&#10003; SMTP test successful</h2>
-      <p>Your HealthBridge email settings are working correctly.</p>
+      <h2 style="color:#1a5276;">&#10003; Resend test successful</h2>
+      <p>Your HealthBridge Resend integration is working correctly.</p>
     </body></html>
     """
     ok, send_err = _send_single_email(
         cfg, cfg['sender_email'], 'Admin',
-        'HealthBridge – SMTP Test ✓', test_html,
+        'HealthBridge – Resend Test ✓', test_html,
     )
     if ok:
-        flash(f'SMTP test passed ✓  A confirmation email was sent to {cfg["sender_email"]}.', 'success')
+        flash(f'✓ Test email sent to {cfg["sender_email"]} via Resend.', 'success')
     else:
-        flash(f'Connection OK but sending failed: {send_err}', 'warning')
+        flash(f'Test email failed: {send_err}', 'danger')
 
     return redirect(url_for('admin_email_settings'))
 
@@ -381,19 +362,15 @@ def admin_send_newsletter():
             flash('Subject and body are required.', 'danger')
             return redirect(url_for('admin_send_newsletter'))
 
-        cfg, cfg_err = _resolve_smtp_config(settings)
+        cfg, cfg_err = _resolve_resend_config(settings)
         if cfg_err:
-            flash(f'Cannot send – email not configured: {cfg_err}', 'danger')
+            flash(f'Email service not configured: {cfg_err}', 'danger')
             return redirect(url_for('admin_send_newsletter'))
 
         if not subscribers:
             flash('There are no subscribers to send to.', 'warning')
             return redirect(url_for('admin_send_newsletter'))
 
-        # No separate pre-flight connection — _send_single_email handles every
-        # error class (auth, network, TLS, refused) and returns (False, msg).
-        # A redundant validate call would open+close a connection for nothing
-        # and double the failure surface before any email is sent.
         sent, failed, errors = 0, 0, []
         for sub in subscribers:
             ok, err = _send_single_email(cfg, sub.email, sub.full_name, subject, body)
@@ -413,300 +390,199 @@ def admin_send_newsletter():
         logger.info('Newsletter send — sent=%d failed=%d subject="%s"', sent, failed, subject)
         return redirect(url_for('admin_send_newsletter'))
 
-    cfg, cfg_err = _resolve_smtp_config(settings)
+    cfg, cfg_err = _resolve_resend_config(settings)
     return render_template('admin_send_newsletter.html',
                            settings=settings,
                            count=len(subscribers),
-                           smtp_ready=(cfg_err is None),
-                           smtp_error=cfg_err)
+                           resend_ready=(cfg_err is None),
+                           resend_error=cfg_err)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  EMAIL HELPERS
+#  EMAIL HELPERS  —  Resend API (sole email provider)
 # ════════════════════════════════════════════════════════════════════════════
-# Credential priority: env vars (Render / .env) > DB (Admin → Email Settings)
+# Gmail SMTP is completely removed.  All email delivery uses the Resend HTTP
+# API (port 443 / HTTPS), which is never blocked by cloud platform firewalls.
 #
-# ROOT-CAUSE NOTE — "Network is unreachable" / Errno 97 / Errno 101
-# ──────────────────────────────────────────────────────────────────
-# smtplib.SMTP(host, port) calls socket.create_connection() internally.
-# create_connection() iterates through ALL getaddrinfo() results in order.
-# Gmail's DNS returns IPv6 addresses *before* IPv4.  On hosts with no IPv6
-# routing (many cloud sandboxes, Render free tier, Docker containers) the
-# very first connect attempt raises OSError(97, 'Address family not
-# supported') or OSError(101, 'Network is unreachable') and Python does NOT
-# fall through to the next address — it raises immediately.
+# CONFIGURATION — two env vars required, one optional:
+#   RESEND_API_KEY       re_xxxxxxxxxxxxxxxxxxxxxxxxxxxx   ← required, env only
+#   RESEND_SENDER_EMAIL  hello@yourdomain.com              ← required
+#   RESEND_SENDER_NAME   HealthBridge NGO                  ← optional
 #
-# Fix: _smtp_connect() resolves only AF_INET (IPv4) addresses first and
-# builds a manual socket before handing it to smtplib.  This guarantees we
-# never attempt an IPv6 connection on an IPv4-only host.
+# Sender name/email may also be saved via Admin → Email Settings as a fallback,
+# but the API key is NEVER stored in the database.
 
-import errno as _errno_mod
+import resend
+from resend.exceptions import (
+    ResendError,
+    InvalidApiKeyError,
+    MissingApiKeyError,
+    RateLimitError,
+    ValidationError,
+    MissingRequiredFieldsError,
+)
 
-_SMTP_TIMEOUT = 15          # seconds — prevents Gunicorn workers from hanging
-_NETWORK_ERRNOS = frozenset({
-    _errno_mod.ENETUNREACH,   # 101  Network is unreachable
-    _errno_mod.EAFNOSUPPORT,  # 97   Address family not supported by protocol
-    _errno_mod.ECONNREFUSED,  # 111  Connection refused
-    _errno_mod.EHOSTUNREACH,  # 113  No route to host
-})
 
-
-def _smtp_connect(host: str, port: int) -> smtplib.SMTP:
+def _resolve_resend_config(settings=None):
     """
-    Return a fresh smtplib.SMTP instance whose underlying socket was created
-    explicitly over IPv4 (AF_INET).  This sidesteps the IPv6-first ordering
-    that getaddrinfo() returns on dual-stack hosts where IPv6 is not routed,
-    which would otherwise raise Errno 97/101 before Python ever tries IPv4.
-    """
-    logger.debug('SMTP connect → %s:%d (IPv4-forced)', host, port)
+    Build the Resend config dict.  Returns (cfg_dict, None) on success or
+    (None, error_str) when required fields are missing.  Never raises.
 
-    # Resolve only IPv4 addresses
-    try:
-        records = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
-    except socket.gaierror as e:
-        raise OSError(f'DNS resolution failed for {host}: {e}') from e
-
-    if not records:
-        raise OSError(f'No IPv4 address found for {host}')
-
-    ipv4_addr = records[0][4][0]
-    logger.debug('Resolved %s → %s (IPv4)', host, ipv4_addr)
-
-    # Build an explicit IPv4 socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(_SMTP_TIMEOUT)
-    try:
-        sock.connect((ipv4_addr, port))
-    except OSError:
-        sock.close()
-        raise
-
-    # Attach the pre-connected socket to a bare SMTP instance.
-    # smtplib.SMTP.__init__ with no host arg skips its internal connect, which
-    # is what we want — but it also leaves self._host = '' (empty string).
-    # starttls() later calls:
-    #     context.wrap_socket(self.sock, server_hostname=self._host)
-    # ssl raises ValueError if server_hostname is '' or starts with '.'.
-    # Fix: set _host explicitly before any TLS call.
-    smtp = smtplib.SMTP(timeout=_SMTP_TIMEOUT)
-    smtp._host = host          # ← must be set for starttls() SSL SNI to work
-    smtp.sock  = sock
-    smtp.file  = smtp.sock.makefile('rb')
-
-    # Read the server greeting banner (220) — replaces what __init__ would do
-    code, msg = smtp.getreply()
-    if code != 220:
-        smtp.close()
-        raise smtplib.SMTPConnectError(code, msg)
-
-    logger.debug('SMTP banner: %d %s', code, msg[:60])
-    return smtp
-
-
-def _resolve_smtp_config(settings=None):
-    """
-    Build the SMTP config dict from env vars (highest priority) with DB as
-    fallback.  Returns (cfg_dict, None) on success or (None, error_str) on
-    missing fields — never raises.
+    API key: env var RESEND_API_KEY only — never falls back to DB.
+    Sender email/name: env var → DB fallback (not sensitive).
     """
     if settings is None:
         settings = EmailSettings.query.first()
 
-    sender_email  = os.environ.get('SMTP_SENDER_EMAIL') or (settings and settings.sender_email)        or ''
-    sender_name   = os.environ.get('SMTP_SENDER_NAME')  or (settings and settings.sender_name)         or 'HealthBridge NGO'
-    smtp_host     = os.environ.get('SMTP_HOST')         or (settings and settings.smtp_host)           or ''
-    smtp_password = os.environ.get('SMTP_PASSWORD')     or (settings and settings.get_smtp_password()) or ''
-    smtp_port_raw = os.environ.get('SMTP_PORT')         or (settings and settings.smtp_port)           or 587
+    # API key: environment only — no DB fallback to prevent accidental exposure
+    api_key = os.environ.get('RESEND_API_KEY', '').strip()
 
-    try:
-        smtp_port = int(smtp_port_raw)
-    except (TypeError, ValueError):
-        smtp_port = 587
+    # Sender identity: env var preferred, DB as convenience fallback
+    sender_email = (os.environ.get('RESEND_SENDER_EMAIL', '').strip()
+                    or (settings and settings.sender_email or ''))
+    sender_name  = (os.environ.get('RESEND_SENDER_NAME', '').strip()
+                    or (settings and settings.sender_name or '')
+                    or 'HealthBridge NGO')
 
-    # Detailed missing-field errors help the admin fix the issue directly
+    if not api_key:
+        return None, (
+            'RESEND_API_KEY environment variable is not set. '
+            'Add it in your Render / Railway dashboard under Environment Variables. '
+            'Get a key at resend.com → API Keys.'
+        )
     if not sender_email:
-        return None, ('Sender email not set. '
-                      'Go to Admin → Email Settings or set SMTP_SENDER_EMAIL env var.')
-    if not smtp_host:
-        return None, ('SMTP host not set. '
-                      'Go to Admin → Email Settings or set SMTP_HOST env var.')
-    if not smtp_password:
-        return None, ('SMTP password not set. '
-                      'Go to Admin → Email Settings or set SMTP_PASSWORD env var.')
+        return None, (
+            'Sender email is not configured. '
+            'Set RESEND_SENDER_EMAIL in your environment variables, '
+            'or save it under Admin → Email Settings. '
+            'It must belong to a domain verified in your Resend account.'
+        )
 
     logger.debug(
-        'SMTP config resolved — from=%s host=%s port=%d (source: %s)',
-        sender_email, smtp_host, smtp_port,
-        'env' if os.environ.get('SMTP_SENDER_EMAIL') else 'db',
+        'Resend config — from=%s key=re_***%s (api key from env)',
+        sender_email, api_key[-4:],
     )
     return {
-        'sender_email':  sender_email,
-        'sender_name':   sender_name,
-        'smtp_host':     smtp_host,
-        'smtp_port':     smtp_port,
-        'smtp_password': smtp_password,
+        'api_key':      api_key,
+        'sender_email': sender_email,
+        'sender_name':  sender_name,
     }, None
 
 
-def _friendly_network_error(exc, host, port):
-    """Convert low-level OS network errors into admin-readable messages."""
-    if isinstance(exc, OSError) and exc.errno in _NETWORK_ERRNOS:
-        return (
-            f'Cannot reach {host}:{port} — outbound SMTP is blocked. '
-            f'On Render, outbound port 587 must be open. '
-            f'Try port 465 (SSL) if 587 is firewalled. '
-            f'OS error: [{exc.errno}] {exc.strerror}'
-        )
-    if isinstance(exc, (socket.timeout, TimeoutError)):
-        return f'Connection to {host}:{port} timed out after {_SMTP_TIMEOUT}s. Check host and port.'
-    return f'Network error connecting to {host}:{port}: {exc}'
-
-
-def _validate_smtp_connection(cfg):
+def _validate_resend_config(cfg):
     """
-    Open a real SMTP connection, run STARTTLS and login, then close cleanly.
-    Returns (True, None) on success or (False, human_readable_error) on any
-    failure.  Never raises — safe to call from a Flask route.
+    Validate API key format without making a network call.
+    Returns (True, None) or (False, human_readable_error).  Never raises.
     """
-    host, port = cfg['smtp_host'], cfg['smtp_port']
-    logger.info('SMTP pre-flight check — host=%s port=%d user=%s', host, port, cfg['sender_email'])
-
-    try:
-        server = _smtp_connect(host, port)
-        try:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            logger.debug('STARTTLS negotiated')
-            server.login(cfg['sender_email'], cfg['smtp_password'])
-            logger.info('SMTP login OK — %s', cfg['sender_email'])
-        finally:
-            try:
-                server.quit()
-            except Exception:
-                pass
-        return True, None
-
-    except smtplib.SMTPAuthenticationError as e:
-        msg = (
-            'Gmail rejected the login credentials. '
-            'You must use a 16-character App Password (not your regular Gmail password). '
-            'Generate one at myaccount.google.com → Security → App passwords. '
-            f'(SMTP code {e.smtp_code})'
+    api_key = cfg.get('api_key', '')
+    if not api_key:
+        return False, 'RESEND_API_KEY environment variable is missing.'
+    if not api_key.startswith('re_'):
+        return False, (
+            f'RESEND_API_KEY looks invalid — expected "re_..." '
+            f'but got "{api_key[:6]}...". '
+            'Regenerate it at resend.com → API Keys.'
         )
-        logger.error('SMTP auth failed for %s: %s', cfg['sender_email'], e)
-        return False, msg
-
-    except smtplib.SMTPConnectError as e:
-        msg = f'SMTP server refused connection to {host}:{port}. ({e})'
-        logger.error(msg)
-        return False, msg
-
-    except smtplib.SMTPException as e:
-        msg = f'SMTP protocol error during handshake: {e}'
-        logger.error(msg)
-        return False, msg
-
-    except OSError as e:
-        msg = _friendly_network_error(e, host, port)
-        logger.error('SMTP connect OSError for %s:%d — %s', host, port, e)
-        return False, msg
-
-    except Exception as e:
-        msg = f'Unexpected error during SMTP test: {type(e).__name__}: {e}'
-        logger.exception(msg)
-        return False, msg
+    logger.info('Resend pre-flight OK — key=re_***%s sender=%s',
+                api_key[-4:], cfg.get('sender_email', ''))
+    return True, None
 
 
 def _send_single_email(cfg, to_email, to_name, subject, body_html):
     """
-    Send one HTML email.  Returns (True, None) on success or (False, err_str)
-    on failure.  Never raises — safe to call in a loop from a Flask route.
+    Send one HTML email via Resend.
+    Returns (True, None) on success or (False, human_readable_error) on any
+    failure.  Never raises — safe to call in a loop from a Flask route.
     """
-    host, port = cfg['smtp_host'], cfg['smtp_port']
-    logger.info('Sending email → %s  subject="%s"  host=%s:%d',
-                to_email, subject[:50], host, port)
+    logger.info('Resend → %s  subject="%s"  from=%s',
+                to_email, subject[:60], cfg['sender_email'])
+
+    resend.api_key = cfg['api_key']
+
+    params: resend.Emails.SendParams = {
+        'from':     f'{cfg["sender_name"]} <{cfg["sender_email"]}>',
+        'to':       [to_email],
+        'subject':  subject,
+        'html':     body_html,
+        'reply_to': cfg['sender_email'],
+    }
+
     try:
-        msg = MIMEMultipart('alternative')
-        msg['Subject']  = subject
-        msg['From']     = f'{cfg["sender_name"]} <{cfg["sender_email"]}>'
-        msg['To']       = f'{to_name} <{to_email}>'
-        msg['Reply-To'] = cfg['sender_email']
-        msg.attach(MIMEText(body_html, 'html'))
-
-        server = _smtp_connect(host, port)
-        try:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(cfg['sender_email'], cfg['smtp_password'])
-            logger.debug('SMTP login OK, sending to %s', to_email)
-            server.sendmail(cfg['sender_email'], to_email, msg.as_string())
-            logger.info('Email delivered → %s', to_email)
-        finally:
-            try:
-                server.quit()
-            except Exception:
-                pass
-
+        response = resend.Emails.send(params)
+        email_id = getattr(response, 'id', None) or (
+            response['id'] if isinstance(response, dict) else 'unknown'
+        )
+        logger.info('Resend delivered → %s  id=%s', to_email, email_id)
         return True, None
 
-    except smtplib.SMTPAuthenticationError as e:
-        err = (
-            'Gmail rejected the App Password. '
-            'Regenerate it at myaccount.google.com → Security → App passwords. '
-            f'(SMTP {e.smtp_code})'
-        )
-        logger.error('Auth error sending to %s: %s', to_email, e)
+    except MissingApiKeyError:
+        err = ('RESEND_API_KEY is missing. '
+               'Set it in your Render / Railway environment variables.')
+        logger.error('Resend MissingApiKeyError to %s', to_email)
         return False, err
 
-    except smtplib.SMTPRecipientsRefused as e:
-        err = f'Recipient address refused by server: {to_email}. ({e})'
-        logger.warning(err)
+    except InvalidApiKeyError as e:
+        err = (f'Resend API key is invalid or revoked (HTTP 403). '
+               f'Generate a new one at resend.com → API Keys. Detail: {e.message}')
+        logger.error('Resend InvalidApiKeyError to %s: %s', to_email, e.message)
         return False, err
 
-    except smtplib.SMTPServerDisconnected as e:
-        err = f'Server disconnected unexpectedly: {e}'
-        logger.error('Disconnected sending to %s: %s', to_email, e)
+    except RateLimitError as e:
+        err = (f'Resend rate limit reached sending to {to_email} (HTTP 429). '
+               f'Slow the send rate or upgrade your Resend plan. Detail: {e.message}')
+        logger.warning('Resend RateLimitError to %s: %s', to_email, e.message)
         return False, err
 
-    except smtplib.SMTPException as e:
-        err = f'SMTP protocol error: {e}'
-        logger.error('SMTPException sending to %s: %s', to_email, e)
+    except (ValidationError, MissingRequiredFieldsError) as e:
+        err = (f'Resend rejected email parameters for {to_email}. '
+               f'Ensure the sender domain is verified in Resend. Detail: {e.message}')
+        logger.error('Resend ValidationError to %s: %s', to_email, e.message)
+        return False, err
+
+    except ResendError as e:
+        err = (f'Resend API error to {to_email} '
+               f'(code={e.code} type={e.error_type}): {e.message}')
+        logger.error('ResendError to %s — code=%s: %s', to_email, e.code, e.message)
         return False, err
 
     except OSError as e:
-        err = _friendly_network_error(e, host, port)
-        logger.error('OSError sending to %s — errno=%s: %s', to_email, e.errno, e)
+        err = (f'Network error reaching Resend API for {to_email}: {e}. '
+               'Check outbound HTTPS (port 443) is open in your environment.')
+        logger.error('OSError (Resend HTTP) to %s: %s', to_email, e)
         return False, err
 
     except Exception as e:
         err = f'Unexpected error sending to {to_email}: {type(e).__name__}: {e}'
-        logger.exception(err)
+        logger.exception('Unexpected Resend error to %s', to_email)
         return False, err
 
 
 def _send_welcome_email(to_email, to_name):
-    """Fire-and-forget welcome email; logs but never raises or crashes the caller."""
-    cfg, err = _resolve_smtp_config()
+    """Fire-and-forget welcome email. Logs on failure, never raises."""
+    cfg, err = _resolve_resend_config()
     if err:
-        logger.info('Welcome email skipped for %s (no SMTP config): %s', to_email, err)
+        logger.info('Welcome email skipped for %s (Resend not configured): %s',
+                    to_email, err)
         return
 
-    subject = f'Welcome to {cfg["sender_name"]} Newsletter!'
-    body_html = f"""\
+    sender_name = cfg['sender_name']
+    subject     = f'Welcome to {sender_name} Newsletter!'
+    body_html   = f"""\
 <html>
-<body style="font-family:Arial,sans-serif;color:#1e3a5f;max-width:600px;margin:0 auto;padding:24px;">
-  <div style="background:linear-gradient(135deg,#1a5276,#2471a3);padding:28px 32px;border-radius:10px 10px 0 0;">
-    <h1 style="color:#ffffff;font-size:22px;margin:0;">Welcome to HealthBridge!</h1>
+<body style="font-family:Arial,sans-serif;color:#1e3a5f;max-width:600px;
+             margin:0 auto;padding:24px;">
+  <div style="background:linear-gradient(135deg,#1a5276,#2471a3);
+              padding:28px 32px;border-radius:10px 10px 0 0;">
+    <h1 style="color:#fff;font-size:22px;margin:0;">Welcome to HealthBridge!</h1>
   </div>
-  <div style="background:#f0f7fd;padding:28px 32px;border-radius:0 0 10px 10px;border:1px solid #d6eaf8;">
+  <div style="background:#f0f7fd;padding:28px 32px;
+              border-radius:0 0 10px 10px;border:1px solid #d6eaf8;">
     <p style="font-size:16px;">Hi <strong>{to_name}</strong>,</p>
-    <p>Thank you for subscribing. You will receive updates on our health outreach programs,
-       community events, and volunteer opportunities.</p>
+    <p>Thank you for subscribing. You will receive updates on our health
+       outreach programs, community events, and volunteer opportunities.</p>
     <p>Together we can make a real difference.</p>
     <br>
-    <p style="color:#5d7fa0;font-size:13px;">— {cfg["sender_name"]}</p>
+    <p style="color:#5d7fa0;font-size:13px;">— {sender_name}</p>
   </div>
 </body>
 </html>"""

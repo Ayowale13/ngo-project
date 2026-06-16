@@ -14,16 +14,16 @@
 <div class="row justify-content-center">
   <div class="col-lg-8">
 
-    {# ── SMTP status banner ─────────────────────────────────────────────── #}
-    {% if smtp_ready %}
+    {# ── Resend status banner ───────────────────────────────────────────── #}
+    {% if resend_ready %}
     <div class="mb-4 p-3 d-flex align-items-center gap-3"
          style="background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.3);border-radius:10px;">
       <i class="bi bi-check-circle-fill" style="color:#90ee90;font-size:1.2rem;flex-shrink:0;"></i>
       <div>
-        <div style="color:#90ee90;font-weight:600;font-size:.9rem;">Email is configured and ready</div>
+        <div style="color:#90ee90;font-weight:600;font-size:.9rem;">Resend is configured and ready</div>
         <div style="color:rgba(255,255,255,.5);font-size:.82rem;">
-          Sending from <strong style="color:rgba(255,255,255,.75);">{{ settings.sender_email or 'env var' }}</strong>
-          via {{ (settings.smtp_host or 'env var') }}:{{ (settings.smtp_port or 587) }}
+          Sending from <strong style="color:rgba(255,255,255,.75);">{{ settings.sender_email or 'RESEND_SENDER_EMAIL env var' }}</strong>
+          via Resend API
         </div>
       </div>
     </div>
@@ -32,8 +32,8 @@
          style="background:rgba(220,53,69,.12);border:1px solid rgba(220,53,69,.3);border-radius:10px;">
       <i class="bi bi-x-circle-fill" style="color:#f1948a;font-size:1.2rem;flex-shrink:0;margin-top:2px;"></i>
       <div>
-        <div style="color:#f1948a;font-weight:600;font-size:.9rem;">Email not configured — sending is disabled</div>
-        <div style="color:rgba(255,255,255,.5);font-size:.82rem;margin-top:.3rem;">{{ smtp_error }}</div>
+        <div style="color:#f1948a;font-weight:600;font-size:.9rem;">Email service not configured — sending is disabled</div>
+        <div style="color:rgba(255,255,255,.5);font-size:.82rem;margin-top:.3rem;">{{ resend_error }}</div>
         <a href="{{ url_for('admin_email_settings') }}"
            style="color:#aed6f1;font-size:.82rem;display:inline-block;margin-top:.5rem;">
           <i class="bi bi-gear-fill me-1"></i>Go to Email Settings →
@@ -73,14 +73,14 @@
           <div class="mb-3">
             <label class="form-label">Email Subject *</label>
             <input type="text" name="subject" class="form-control"
-                   placeholder="e.g. Our Latest Health Outreach Update — June 2024" required
-                   {% if not smtp_ready or count == 0 %}disabled{% endif %}/>
+                   placeholder="e.g. Our Latest Health Outreach Update" required
+                   {% if not resend_ready or count == 0 %}disabled{% endif %}/>
           </div>
           <div class="mb-4">
             <label class="form-label">Message Body <span style="color:rgba(255,255,255,.35);font-weight:400;">(HTML supported)</span> *</label>
             <textarea name="body" class="form-control" rows="12"
                       placeholder="Write your newsletter content here.&#10;&#10;HTML is supported, e.g.:&#10;&lt;b&gt;Bold text&lt;/b&gt;, &lt;a href=&quot;...&quot;&gt;links&lt;/a&gt;, &lt;br&gt; for line breaks."
-                      required {% if not smtp_ready or count == 0 %}disabled{% endif %}></textarea>
+                      required {% if not resend_ready or count == 0 %}disabled{% endif %}></textarea>
             <div class="form-text" style="color:rgba(255,255,255,.3);font-size:.8rem;">
               Basic HTML tags are rendered by email clients. Plain text also works.
             </div>
@@ -91,12 +91,12 @@
                     id="sendBtn"
                     class="btn-adm"
                     style="padding:.75rem 2rem;"
-                    {% if not smtp_ready or count == 0 %}disabled{% endif %}>
+                    {% if not resend_ready or count == 0 %}disabled{% endif %}>
               <i class="bi bi-send-fill"></i>
               Send to {{ count }} Subscriber{{ 's' if count != 1 }}
             </button>
 
-            {% if smtp_ready %}
+            {% if resend_ready %}
             <span style="color:rgba(255,255,255,.25);font-size:.85rem;">or</span>
             <a href="{{ url_for('admin_email_settings') }}" class="btn-adm"
                style="background:rgba(255,255,255,.07);padding:.65rem 1.2rem;font-size:.88rem;">
@@ -109,18 +109,23 @@
       </div>
     </div>
 
-    {# ── Gmail guide ─────────────────────────────────────────────────────── #}
-    {% if not smtp_ready %}
+    {# ── Resend setup guide (shown only when not configured) ─────────────── #}
+    {% if not resend_ready %}
     <div class="mt-4 admin-settings-group">
-      <div class="group-title"><i class="bi bi-info-circle-fill"></i> Gmail Setup – 3 Steps</div>
+      <div class="group-title"><i class="bi bi-info-circle-fill"></i> Resend Setup – 3 Steps</div>
       <ol style="color:rgba(255,255,255,.55);font-size:.88rem;line-height:2.2;padding-left:1.2rem;">
-        <li>Enable <strong style="color:rgba(255,255,255,.7);">2-Step Verification</strong> on your Google account
-            (<a href="https://myaccount.google.com/security" target="_blank" style="color:#aed6f1;">myaccount.google.com → Security</a>).</li>
-        <li>Search <strong style="color:rgba(255,255,255,.7);">"App passwords"</strong> in your Google account and generate a new password for <em>Mail</em>.
-            Copy the <strong style="color:rgba(255,255,255,.7);">16-character code</strong>.</li>
-        <li>Go to <a href="{{ url_for('admin_email_settings') }}" style="color:#aed6f1;">Email Settings</a>
-            and fill in your Gmail address, <code style="color:#aed6f1;">smtp.gmail.com</code>, port <code style="color:#aed6f1;">587</code>,
-            and the App Password. Click <em>Test Connection</em> to verify before sending.</li>
+        <li>Sign up at <a href="https://resend.com" target="_blank" style="color:#aed6f1;">resend.com</a>
+            (free tier: 3,000 emails/month).</li>
+        <li>Verify your sending domain under <strong style="color:rgba(255,255,255,.7);">Domains</strong>,
+            then create an API key under <strong style="color:rgba(255,255,255,.7);">API Keys</strong>.</li>
+        <li>Add these environment variables in your
+            <strong style="color:rgba(255,255,255,.7);">Render / Railway dashboard</strong>:<br>
+          <code style="color:#aed6f1;display:block;margin-top:.4rem;line-height:2;">
+            RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx<br>
+            RESEND_SENDER_EMAIL=hello@yourdomain.com<br>
+            RESEND_SENDER_NAME=HealthBridge NGO
+          </code>
+        </li>
       </ol>
     </div>
     {% endif %}
