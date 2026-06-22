@@ -4,4 +4,3 @@ flask-login
 gunicorn
 werkzeug
 python-dotenv
-resend

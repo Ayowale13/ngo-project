@@ -7,127 +7,175 @@
   <a href="{{ url_for('admin_dashboard') }}" class="btn-adm btn-adm-sm"><i class="bi bi-arrow-left"></i> Back</a>
   <div>
     <h1 style="color:rgba(255,255,255,.9);font-family:'Merriweather',serif;font-size:1.6rem;margin:0;">Email Settings</h1>
-    <p style="color:rgba(255,255,255,.4);font-size:.88rem;margin:0;">Resend API — sender identity configuration</p>
+    <p style="color:rgba(255,255,255,.4);font-size:.88rem;margin:0;">Configure your email sender and SMTP credentials</p>
   </div>
 </div>
 
 <div class="row justify-content-center">
   <div class="col-lg-8">
 
-    {# ── API key status banner ──────────────────────────────────────────── #}
-    {% if resend_key_set %}
-    <div class="mb-4 p-3 d-flex align-items-center gap-3"
-         style="background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.25);border-radius:10px;">
+    <!-- Status Banner -->
+    {% if settings.sender_email %}
+    <div class="mb-4 p-3 d-flex align-items-center gap-3" style="background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.25);border-radius:10px;">
       <i class="bi bi-check-circle-fill" style="color:#90ee90;font-size:1.2rem;flex-shrink:0;"></i>
       <div>
-        <div style="color:#90ee90;font-weight:600;font-size:.9rem;">RESEND_API_KEY is set</div>
-        <div style="color:rgba(255,255,255,.5);font-size:.82rem;">
-          API key loaded from environment variable. Email delivery is active.
-        </div>
+        <div style="color:#90ee90;font-weight:600;font-size:.9rem;">Email configured</div>
+        <div style="color:rgba(255,255,255,.5);font-size:.82rem;">Sending from <strong style="color:rgba(255,255,255,.75);">{{ settings.sender_email }}</strong> via {{ settings.mail_service|upper }}</div>
       </div>
     </div>
     {% else %}
-    <div class="mb-4 p-3 d-flex align-items-start gap-3"
-         style="background:rgba(220,53,69,.12);border:1px solid rgba(220,53,69,.3);border-radius:10px;">
-      <i class="bi bi-x-circle-fill" style="color:#f1948a;font-size:1.2rem;flex-shrink:0;margin-top:2px;"></i>
+    <div class="mb-4 p-3 d-flex align-items-center gap-3" style="background:rgba(255,180,0,.1);border:1px solid rgba(255,180,0,.25);border-radius:10px;">
+      <i class="bi bi-exclamation-triangle-fill" style="color:#ffd700;font-size:1.2rem;flex-shrink:0;"></i>
       <div>
-        <div style="color:#f1948a;font-weight:600;font-size:.9rem;">RESEND_API_KEY is not set</div>
-        <div style="color:rgba(255,255,255,.5);font-size:.82rem;margin-top:.2rem;">
-          Add <code style="color:#f1948a;">RESEND_API_KEY</code> to your Render / Railway environment
-          variables. Email sending is disabled until this is set.
-        </div>
+        <div style="color:#ffd700;font-weight:600;font-size:.9rem;">Email not configured</div>
+        <div style="color:rgba(255,255,255,.5);font-size:.82rem;">Fill in the details below to enable newsletter and notification emails.</div>
       </div>
     </div>
     {% endif %}
 
-    {# ── Sender identity form ───────────────────────────────────────────── #}
     <form method="POST" action="{{ url_for('admin_email_settings') }}" class="admin-form-section">
 
+      <!-- Sender Info -->
       <div class="admin-settings-group">
-        <div class="group-title"><i class="bi bi-person-badge-fill"></i> Sender Identity</div>
-        <p style="color:rgba(255,255,255,.4);font-size:.82rem;margin-bottom:1.2rem;">
-          These values appear in the "From" field of every email. The API key is read
-          exclusively from the <code style="color:#aed6f1;">RESEND_API_KEY</code> environment
-          variable and is never stored in the database.
-        </p>
+        <div class="group-title"><i class="bi bi-person-badge-fill"></i> Sender Information</div>
         <div class="row g-3">
           <div class="col-sm-6">
             <label class="form-label">Sender Name</label>
             <input type="text" name="sender_name" class="form-control"
-                   value="{{ settings.sender_name or '' }}"
-                   placeholder="e.g. HealthBridge Outreach Team"/>
-            <div class="form-text" style="color:rgba(255,255,255,.3);font-size:.8rem;">
-              Displayed as the "From" name in recipients' inboxes.
-            </div>
+                   value="{{ settings.sender_name or '' }}" placeholder="e.g. HealthBridge Outreach Team"/>
+            <div class="form-text" style="color:rgba(255,255,255,.3);font-size:.8rem;">Displayed as the "From" name in emails.</div>
           </div>
           <div class="col-sm-6">
             <label class="form-label">Sender Email Address</label>
             <input type="email" name="sender_email" class="form-control"
-                   value="{{ settings.sender_email or '' }}"
-                   placeholder="hello@yourdomain.com"/>
+                   value="{{ settings.sender_email or '' }}" placeholder="ngo@yourdomain.com"/>
+            <div class="form-text" style="color:rgba(255,255,255,.3);font-size:.8rem;">Must match the authenticated SMTP account.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mail Service Selection -->
+      <div class="admin-settings-group">
+        <div class="group-title"><i class="bi bi-envelope-fill"></i> Email Service</div>
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Select Mail Service</label>
+            <select name="mail_service" class="form-select" id="mailServiceSelect">
+              <option value="smtp" {% if settings.mail_service == 'smtp' %}selected{% endif %}>SMTP (Gmail, Outlook, custom)</option>
+              <option value="brevo" {% if settings.mail_service == 'brevo' %}selected{% endif %}>Brevo (Sendinblue) API</option>
+              <option value="mailchimp" {% if settings.mail_service == 'mailchimp' %}selected{% endif %}>Mailchimp Transactional (Mandrill)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- SMTP Config -->
+      <div class="admin-settings-group" id="smtpSection">
+        <div class="group-title"><i class="bi bi-hdd-network-fill"></i> SMTP Configuration</div>
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label class="form-label">SMTP Host</label>
+            <input type="text" name="smtp_host" class="form-control"
+                   value="{{ settings.smtp_host or '' }}" placeholder="smtp.gmail.com"/>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">SMTP Port</label>
+            <input type="number" name="smtp_port" class="form-control"
+                   value="{{ settings.smtp_port or 587 }}" placeholder="587"/>
+          </div>
+          <div class="col-12">
+            <label class="form-label">SMTP Password / App Password</label>
+            <div class="input-group">
+              <input type="password" name="smtp_password" class="form-control" id="smtpPwdInput"
+                     placeholder="{% if settings.smtp_password_enc %}••••••••••••{% else %}Enter app password{% endif %}"/>
+              <button class="btn" type="button" id="toggleSmtpPwd"
+                      style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);">
+                <i class="bi bi-eye" id="smtpEye"></i>
+              </button>
+            </div>
             <div class="form-text" style="color:rgba(255,255,255,.3);font-size:.8rem;">
-              Must be on a domain verified in your Resend account.
-              Can also be set via <code style="color:#aed6f1;">RESEND_SENDER_EMAIL</code> env var.
+              {% if settings.smtp_password_enc %}
+              Password is saved. Leave blank to keep existing password unchanged.
+              {% else %}
+              For Gmail, use a 16-character App Password (not your regular password).
+              {% endif %}
             </div>
           </div>
         </div>
       </div>
 
-      <div class="d-flex gap-3 mb-4">
+      <!-- API Key (for Brevo / Mailchimp) -->
+      <div class="admin-settings-group" id="apiSection" style="display:{% if settings.mail_service != 'smtp' %}block{% else %}none{% endif %};">
+        <div class="group-title"><i class="bi bi-key-fill"></i> API Key</div>
+        <div class="col-12">
+          <label class="form-label">Service API Key</label>
+          <div class="input-group">
+            <input type="password" name="api_key" class="form-control" id="apiKeyInput"
+                   placeholder="{% if settings.api_key_enc %}••••••••••••{% else %}Paste your API key here{% endif %}"/>
+            <button class="btn" type="button" id="toggleApiKey"
+                    style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);">
+              <i class="bi bi-eye" id="apiEye"></i>
+            </button>
+          </div>
+          <div class="form-text" style="color:rgba(255,255,255,.3);font-size:.8rem;">
+            {% if settings.api_key_enc %}API key saved. Leave blank to keep unchanged.{% else %}Enter your Brevo or Mailchimp API key.{% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Security Note -->
+      <div class="mb-4 p-3" style="background:rgba(36,113,163,.1);border:1px solid rgba(36,113,163,.25);border-radius:10px;font-size:.85rem;color:rgba(255,255,255,.55);">
+        <i class="bi bi-shield-lock-fill me-2" style="color:#aed6f1;"></i>
+        Credentials are stored encoded in the database and are never exposed in the frontend. For maximum security, consider using environment variables in production.
+      </div>
+
+      <div class="d-flex gap-3">
         <button type="submit" class="btn-adm" style="padding:.75rem 2rem;">
-          <i class="bi bi-save-fill"></i> Save Sender Settings
+          <i class="bi bi-save-fill"></i> Save Settings
         </button>
-        <a href="{{ url_for('admin_dashboard') }}" class="btn-adm"
-           style="background:rgba(255,255,255,.08);padding:.75rem 1.5rem;">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn-adm" style="background:rgba(255,255,255,.08);padding:.75rem 1.5rem;">
           Cancel
         </a>
       </div>
 
     </form>
 
-    {# ── Test email button ──────────────────────────────────────────────── #}
-    {% if resend_key_set and settings.sender_email %}
-    <div class="admin-settings-group mb-4">
-      <div class="group-title"><i class="bi bi-send-check-fill"></i> Test Email Delivery</div>
-      <p style="color:rgba(255,255,255,.45);font-size:.85rem;margin-bottom:1rem;">
-        Sends a live test email to <strong style="color:rgba(255,255,255,.7);">{{ settings.sender_email }}</strong>
-        to verify the Resend integration is working end-to-end.
-      </p>
-      <form method="POST" action="{{ url_for('admin_test_smtp') }}">
-        <button type="submit" class="btn-adm" style="padding:.6rem 1.4rem;">
-          <i class="bi bi-envelope-check"></i> Send Test Email
-        </button>
-      </form>
-    </div>
-    {% endif %}
-
-    {# ── Resend setup guide ─────────────────────────────────────────────── #}
-    <div class="admin-settings-group">
-      <div class="group-title"><i class="bi bi-info-circle-fill"></i> Resend Setup Guide</div>
-      <ol style="color:rgba(255,255,255,.55);font-size:.88rem;line-height:2.2;padding-left:1.2rem;">
-        <li>Create a free account at
-            <a href="https://resend.com" target="_blank" style="color:#aed6f1;">resend.com</a>
-            (3,000 emails/month free, no credit card required).</li>
-        <li>Go to <strong style="color:rgba(255,255,255,.7);">Domains</strong> and add + verify your
-            sending domain by adding the provided DNS records at your registrar.</li>
-        <li>Go to <strong style="color:rgba(255,255,255,.7);">API Keys</strong>, create a new key,
-            and copy the <code style="color:#aed6f1;">re_...</code> value.</li>
-        <li>In your <strong style="color:rgba(255,255,255,.7);">Render / Railway dashboard</strong>,
-            add these environment variables:
-          <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:.8rem 1rem;margin-top:.5rem;">
-            <code style="color:#aed6f1;font-size:.82rem;display:block;line-height:2.2;">
-              RESEND_API_KEY&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=&nbsp;re_xxxxxxxxxxxxxxxxxxxx<br>
-              RESEND_SENDER_EMAIL&nbsp;=&nbsp;hello@yourdomain.com<br>
-              RESEND_SENDER_NAME&nbsp;&nbsp;=&nbsp;HealthBridge NGO
-            </code>
-          </div>
-        </li>
-        <li>Redeploy your service and click <strong style="color:rgba(255,255,255,.7);">Send Test Email</strong>
-            above to confirm delivery.</li>
+    <!-- Quick guide -->
+    <div class="mt-4 admin-settings-group">
+      <div class="group-title"><i class="bi bi-info-circle-fill"></i> Gmail SMTP Quick Setup</div>
+      <ol style="color:rgba(255,255,255,.55);font-size:.88rem;line-height:2;padding-left:1.2rem;">
+        <li>Go to your Google Account → Security → 2-Step Verification (enable it)</li>
+        <li>Under Security, search "App passwords"</li>
+        <li>Generate a new App Password for "Mail"</li>
+        <li>Copy the 16-character password and paste it above</li>
+        <li>Set SMTP Host to <code style="color:#aed6f1;">smtp.gmail.com</code> and Port to <code style="color:#aed6f1;">587</code></li>
       </ol>
     </div>
 
   </div>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Toggle password visibility
+  function makeToggle(btnId, inputId, iconId) {
+    document.getElementById(btnId).addEventListener('click', () => {
+      const inp = document.getElementById(inputId);
+      const icon = document.getElementById(iconId);
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+      icon.className = inp.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+    });
+  }
+  makeToggle('toggleSmtpPwd', 'smtpPwdInput', 'smtpEye');
+  makeToggle('toggleApiKey',  'apiKeyInput',  'apiEye');
+
+  // Show/hide SMTP vs API sections
+  document.getElementById('mailServiceSelect').addEventListener('change', function() {
+    const isSmtp = this.value === 'smtp';
+    document.getElementById('smtpSection').style.display = isSmtp ? 'block' : 'none';
+    document.getElementById('apiSection').style.display  = isSmtp ? 'none'  : 'block';
+  });
+</script>
 {% endblock %}
